@@ -76,3 +76,22 @@ When editing:
     ---
 alwaysApply: true
 ---
+⸻
+## Module 2 — Campaign CRUD
+Goal: Implement campaign management.
+
+Backend
+- Create /api/campaigns with GET, POST, PUT, DELETE.
+- Use better-sqlite3; table fields: id INTEGER PK, name TEXT, description TEXT, created_at DATETIME.
+- Validate input; return JSON.
+
+Frontend
+- Add Campaigns page.
+- List campaigns in an MUI Table.
+- Add/Edit/Delete using Dialogs.
+- Follow dark-fantasy theme (gold accents).
+
+Deliverables
+- server/routes/campaigns.js
+- client/src/pages/Campaigns.jsx
+- Updated navigation link in Layout.jsx
