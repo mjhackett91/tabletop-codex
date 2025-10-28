@@ -19,5 +19,5 @@ app.get("/api/ping", (req, res) => {
 
 app.use("/api/campaigns", campaignsRouter);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
