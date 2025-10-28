@@ -1,0 +1,78 @@
+Cursor Project Prompt – Table Top Codex (Phase 1 – Feature Development)
+
+Context
+
+You are generating code for Table Top Codex, a self-hosted full-stack web app that helps Game Masters organize tabletop RPG campaigns.
+
+Stack
+	•	Frontend: React 18 + Vite + Material UI (MUI v5)   • Folder: client/
+	•	Backend: Node 22 + Express 5 (ES Modules) + Better-SQLite3 • Folder: server/
+	•	Database: SQLite (local file db/ttc.db)
+	•	Dev Environment: Vite proxy connects /api/* → http://localhost:5000
+	•	Auth: none yet   • Docker / Postgres / Caddy: future Phase 2 migration
+	•	Style guide: Dark-fantasy aesthetic; gold (#c0a36e) accents; elegant, minimal UI; consistent MUI theming.
+
+Rules
+	•	Do not expose secrets in the frontend.
+	•	Use .env for backend variables.
+	•	Output ≤ 300 lines per response.
+	•	Prefer complete files or clear patch instructions.
+	•	Never introduce Docker, Prisma, or Postgres in Phase 1.
+
+⸻
+
+Module 1A — Health Check + Integration
+
+Goal: verify full stack connectivity.
+	1.	Backend
+	•	Add GET /api/ping route returning { ok: true } from server/index.js.
+	•	Create server/.env.example with:
+    PORT=5000
+DB_PATH=./db/ttc.db
+2.	Frontend
+	•	Update client/vite.config.js to proxy /api → http://localhost:5000.
+	•	In client/src/pages/Home.jsx, fetch /api/ping on mount and display result.
+	3.	Docs
+	•	Append root README.md section with run steps:
+	•	cd server && npm start
+	•	cd client && npm run dev
+	4.	Ports
+	•	Client 5173 (dev)
+	•	Server 5000 (dev)
+
+Deliverables:
+	•	Updated server/index.js (if needed)
+	•	server/.env.example
+	•	client/vite.config.js with proxy
+	•	client/src/pages/Home.jsx showing ping result
+	•	README snippet
+
+⸻
+
+Module 1B — Next after Ping
+
+(Only once Module 1A works)
+Add first CRUD module: Campaigns → then NPCs → Cities → Factions.
+
+⸻
+
+Cursor Behavior
+
+When editing:
+	•	Keep existing folder names (client, server).
+	•	Use functional React components with MUI.
+	•	Keep imports absolute to src/ when possible.
+	•	Write minimal, clear Express routes.
+	•	Avoid external state libs until needed.
+⸻
+## UI / UX & Branding Guidelines
+- Theme: dark-fantasy; black/charcoal backgrounds, gold (#c0a36e) accents.
+- Typography: primary Cinzel (serif) for headings, Roboto (sans) for body.
+- Components: Material UI v5; prefer contained buttons with gold accent.
+- Layout: Apple-like simplicity; avoid clutter, soft shadows, rounded 8 px corners.
+- Behavior: responsive design first; maintain consistent spacing (8 px grid).
+- Always use MUI theme variables instead of inline colors.
+- Dark mode only for now.
+    ---
+alwaysApply: true
+---
