@@ -34,6 +34,43 @@ export default function Layout({ children }) {
             >
               Campaigns
             </Button>
+            {localStorage.getItem("token") ? (
+              <Button
+                onClick={() => {
+                  localStorage.removeItem("token");
+                  localStorage.removeItem("user");
+                  window.location.href = "/login";
+                }}
+                color="inherit"
+                sx={{ color: "text.secondary" }}
+              >
+                Logout
+              </Button>
+            ) : (
+              <>
+                <Button
+                  component={Link}
+                  to="/login"
+                  color="inherit"
+                  sx={{ 
+                    color: location.pathname === "/login" ? "primary.main" : "text.secondary"
+                  }}
+                >
+                  Login
+                </Button>
+                <Button
+                  component={Link}
+                  to="/register"
+                  variant="outlined"
+                  color="primary"
+                  sx={{ 
+                    color: location.pathname === "/register" ? "primary.main" : "primary.main"
+                  }}
+                >
+                  Register
+                </Button>
+              </>
+            )}
           </Box>
         </Toolbar>
       </AppBar>

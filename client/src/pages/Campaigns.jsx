@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -21,7 +22,10 @@ import {
   Alert,
   Chip,
 } from "@mui/material";
-import { Add, Edit, Delete } from "@mui/icons-material";
+import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import apiClient from "../services/apiClient";
 
 export default function Campaigns() {
   const [campaigns, setCampaigns] = useState([]);
@@ -30,16 +34,42 @@ export default function Campaigns() {
   const [editingCampaign, setEditingCampaign] = useState(null);
   const [formData, setFormData] = useState({ name: "", description: "" });
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+  const navigate = useNavigate();
 
   // Fetch campaigns
   const fetchCampaigns = async () => {
     try {
-      const response = await fetch("/api/campaigns");
-      const data = await response.json();
-      setCampaigns(data);
+      // Check if user is authenticated
+      const token = localStorage.getItem("token");
+      console.log("Fetching campaigns, token exists:", !!token);
+      
+      if (!token) {
+        console.log("No token found, redirecting to login");
+        navigate("/login");
+        return;
+      }
+
+      console.log("Making API call to /api/campaigns");
+      const data = await apiClient.get("/api/campaigns");
+      console.log("Campaigns data received:", data);
+      setCampaigns(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Failed to fetch campaigns:", error);
-      showSnackbar("Failed to fetch campaigns", "error");
+      console.error("Error message:", error.message);
+      
+      // If authentication error, redirect to login
+      if (error.message.includes("Authentication") || 
+          error.message.includes("401") || 
+          error.message.includes("403") ||
+          error.message.includes("required")) {
+        console.log("Authentication error, clearing storage and redirecting");
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        navigate("/login");
+        return;
+      }
+      
+      showSnackbar(error.message || "Failed to fetch campaigns", "error");
     } finally {
       setLoading(false);
     }
@@ -74,18 +104,10 @@ export default function Campaigns() {
 
   const handleSubmit = async () => {
     try {
-      const url = editingCampaign ? `/api/campaigns/${editingCampaign.id}` : "/api/campaigns";
-      const method = editingCampaign ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to save campaign");
+      if (editingCampaign) {
+        await apiClient.put(`/api/campaigns/${editingCampaign.id}`, formData);
+      } else {
+        await apiClient.post("/api/campaigns", formData);
       }
 
       await fetchCampaigns();
@@ -103,13 +125,7 @@ export default function Campaigns() {
     if (!window.confirm("Are you sure you want to delete this campaign?")) return;
 
     try {
-      const response = await fetch(`/api/campaigns/${id}`, { method: "DELETE" });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to delete campaign");
-      }
-
+      await apiClient.delete(`/api/campaigns/${id}`);
       await fetchCampaigns();
       showSnackbar("Campaign deleted successfully");
     } catch (error) {
@@ -194,14 +210,14 @@ export default function Campaigns() {
                       color="primary"
                       size="small"
                     >
-                      <Edit />
+                      <EditIcon />
                     </IconButton>
                     <IconButton
                       onClick={() => handleDelete(campaign.id)}
                       color="error"
                       size="small"
                     >
-                      <Delete />
+                      <DeleteIcon />
                     </IconButton>
                   </TableCell>
                 </TableRow>
@@ -217,7 +233,7 @@ export default function Campaigns() {
         sx={{ position: "fixed", bottom: 16, right: 16 }}
         onClick={() => handleOpenDialog()}
       >
-        <Add />
+        <AddIcon />
       </Fab>
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>

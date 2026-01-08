@@ -5,6 +5,7 @@ import db from "./db.js";
 import authRouter from "./routes/auth.js";
 import campaignsRouter from "./routes/campaigns.js";
 import contentRouter from "./routes/content.js";
+import charactersRouter from "./routes/characters.js";
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ app.get("/api/ping", (req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/campaigns", campaignsRouter);
 app.use("/api/campaigns", contentRouter);
+app.use("/api/campaigns", charactersRouter);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
