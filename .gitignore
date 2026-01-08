@@ -1,0 +1,42 @@
+# Environment files
+.env
+.env.local
+.env.production
+.env.development
+*.env
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+db/
+data/
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+build/
+.client/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Uploads
+uploads/

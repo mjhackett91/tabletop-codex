@@ -1,50 +1,21 @@
-// server/routes/campaigns.js
+// server/routes/campaigns.js - User-scoped campaigns CRUD
 import express from "express";
-import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import db from "../db.js";
+import { authenticateToken } from "../middleware/auth.js";
+import { verifyCampaignOwnership } from "../utils/campaignOwnership.js";
 
 const router = express.Router();
 
-/**
- * Resolve database path
- * Default: one level above /server → /db/ttc.db
- * Create folder if it does not exist.
- */
-const dbPath = process.env.DB_PATH || path.join(__dirname, "../db/ttc.db");
-const dbDir = path.dirname(dbPath);
+// All campaign routes require authentication
+router.use(authenticateToken);
 
-if (!fs.existsSync(dbDir)) {
-  console.log("Creating database directory:", dbDir);
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
-console.log("Resolved DB path:", dbPath);
-
-// Initialize database
-const db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
-
-// Create campaigns table if it doesn't exist
-db.exec(`
-  CREATE TABLE IF NOT EXISTS campaigns (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
-`);
-
-/** GET /api/campaigns - List all campaigns */
+/** GET /api/campaigns - List user's campaigns */
 router.get("/", (req, res) => {
   try {
+    const userId = req.user.id;
     const campaigns = db
-      .prepare("SELECT * FROM campaigns ORDER BY created_at DESC")
-      .all();
+      .prepare("SELECT * FROM campaigns WHERE user_id = ? ORDER BY created_at DESC")
+      .all(userId);
     res.json(campaigns);
   } catch (error) {
     console.error("Error fetching campaigns:", error);
@@ -55,15 +26,17 @@ router.get("/", (req, res) => {
 /** POST /api/campaigns - Create new campaign */
 router.post("/", (req, res) => {
   try {
+    const userId = req.user.id;
     const { name, description } = req.body;
+    
     if (!name || !name.trim()) {
       return res.status(400).json({ error: "Campaign name is required" });
     }
 
     const stmt = db.prepare(
-      "INSERT INTO campaigns (name, description) VALUES (?, ?)"
+      "INSERT INTO campaigns (user_id, name, description) VALUES (?, ?, ?)"
     );
-    const result = stmt.run(name.trim(), description?.trim() || null);
+    const result = stmt.run(userId, name.trim(), description?.trim() || null);
 
     const newCampaign = db
       .prepare("SELECT * FROM campaigns WHERE id = ?")
@@ -79,15 +52,22 @@ router.post("/", (req, res) => {
 router.put("/:id", (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
     const { name, description } = req.body;
+    
     if (!name || !name.trim()) {
       return res.status(400).json({ error: "Campaign name is required" });
     }
 
+    // Verify ownership
+    if (!verifyCampaignOwnership(id, userId)) {
+      return res.status(403).json({ error: "Campaign not found or access denied" });
+    }
+
     const stmt = db.prepare(
-      "UPDATE campaigns SET name = ?, description = ? WHERE id = ?"
+      "UPDATE campaigns SET name = ?, description = ? WHERE id = ? AND user_id = ?"
     );
-    const result = stmt.run(name.trim(), description?.trim() || null, id);
+    const result = stmt.run(name.trim(), description?.trim() || null, id, userId);
 
     if (result.changes === 0) {
       return res.status(404).json({ error: "Campaign not found" });
@@ -107,8 +87,15 @@ router.put("/:id", (req, res) => {
 router.delete("/:id", (req, res) => {
   try {
     const { id } = req.params;
-    const stmt = db.prepare("DELETE FROM campaigns WHERE id = ?");
-    const result = stmt.run(id);
+    const userId = req.user.id;
+
+    // Verify ownership
+    if (!verifyCampaignOwnership(id, userId)) {
+      return res.status(403).json({ error: "Campaign not found or access denied" });
+    }
+
+    const stmt = db.prepare("DELETE FROM campaigns WHERE id = ? AND user_id = ?");
+    const result = stmt.run(id, userId);
 
     if (result.changes === 0) {
       return res.status(404).json({ error: "Campaign not found" });
