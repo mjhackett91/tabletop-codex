@@ -71,13 +71,25 @@ nano .env  # or use your preferred editor
 
 ### Step 4: Build and Start Services
 
+**For Local Network Deployment:**
 ```bash
-# Build and start all services
+# Build and start all services (direct port access)
 docker compose up -d --build
 
 # View logs to ensure everything starts correctly
 docker compose logs -f
 ```
+
+**For Public/Production Deployment with HTTPS:**
+```bash
+# Use production compose (includes Nginx Proxy Manager, internal-only services)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+# View logs to ensure everything starts correctly
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+```
+
+See the [Public / HTTPS Deployment](#public--https-deployment-production) section below for complete setup instructions.
 
 **Expected output:**
 - ✅ All services should start without errors
@@ -93,8 +105,14 @@ docker compose logs -f
    All services should show "Up" status.
 
 2. **Access the application:**
-   - Frontend: `http://YOUR_NAS_IP` (or the port you configured)
-   - Mailpit UI: `http://YOUR_NAS_IP:8025` (to view emails)
+   - **Local deployment:** 
+     - Frontend: `http://YOUR_NAS_IP` (or the port you configured)
+     - Mailpit UI: `http://YOUR_NAS_IP:8025` (to view emails)
+   - **Production deployment (with Nginx Proxy Manager):**
+     - Frontend: `https://app.yourdomain.com` (or your configured domain)
+     - Backend API: `https://api.yourdomain.com`
+     - NPM Admin: `http://YOUR_NAS_IP:81` (internal access only)
+     - Mailpit: Access via reverse proxy or `http://YOUR_NAS_IP:8025` (internal only)
 
 3. **Test the API:**
    ```bash
@@ -269,14 +287,149 @@ Before going live:
 - [ ] Set up HTTPS/SSL (if using domain) - recommended for production
 - [ ] Regular backups configured for database and uploads
 
+## Public / HTTPS Deployment (Production)
+
+For public internet access with HTTPS, use **Nginx Proxy Manager** (included in production compose).
+
+### Security Requirements
+
+**⚠️ CRITICAL: Do NOT expose the following services directly to the internet:**
+- ❌ **PostgreSQL** - Internal-only (already configured)
+- ❌ **Mailpit** - Internal-only or via reverse proxy with authentication
+- ❌ **Backend API** - Access via reverse proxy only
+- ❌ **Frontend** - Access via reverse proxy only
+
+**✅ ONLY expose:**
+- ✅ **Port 80** (HTTP) - For Let's Encrypt certificate challenges
+- ✅ **Port 443** (HTTPS) - Main application access
+- ✅ **Port 81** (Admin) - Nginx Proxy Manager admin UI (internal access only)
+
+### Using Production Compose
+
+```bash
+# Use production compose (includes Nginx Proxy Manager)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+### Setting Up Nginx Proxy Manager
+
+1. **Access NPM Admin UI:**
+   - Navigate to `http://YOUR_NAS_IP:81`
+   - Default login: `admin@example.com` / `changeme`
+   - **Change password immediately!**
+
+2. **Configure SSL Certificates:**
+   - Go to "SSL Certificates" tab
+   - Click "Add SSL Certificate"
+   - Use "Let's Encrypt" for automatic certificates
+   - Enter your domain(s) (e.g., `app.yourdomain.com`, `api.yourdomain.com`)
+
+3. **Create Proxy Host for Frontend:**
+   - Go to "Proxy Hosts" tab → "Add Proxy Host"
+   - **Details:**
+     - Domain Names: `app.yourdomain.com` (or `yourdomain.com`)
+     - Forward Hostname/IP: `ttc-frontend` (container name)
+     - Forward Port: `80`
+     - Block Common Exploits: ✅ Enabled
+     - Websockets Support: ✅ Enabled
+   - **SSL:**
+     - SSL Certificate: Select your Let's Encrypt certificate
+     - Force SSL: ✅ Enabled
+     - HTTP/2 Support: ✅ Enabled
+
+4. **Create Proxy Host for Backend API:**
+   - "Add Proxy Host"
+   - **Details:**
+     - Domain Names: `api.yourdomain.com`
+     - Forward Hostname/IP: `ttc-backend` (container name)
+     - Forward Port: `5000`
+     - Block Common Exploits: ✅ Enabled
+     - Websockets Support: ✅ Enabled (if needed)
+   - **SSL:**
+     - SSL Certificate: Select your Let's Encrypt certificate
+     - Force SSL: ✅ Enabled
+     - HTTP/2 Support: ✅ Enabled
+
+5. **Optional: Mailpit Access (via Reverse Proxy):**
+   - Only if you want to access Mailpit UI from the internet
+   - Create proxy host for `mailpit.yourdomain.com` → `ttc-mailpit:8025`
+   - **Add Authentication:** Use NPM's "Access Lists" to require authentication
+   - **OR** use IP whitelisting to restrict to your IP only
+
+### Environment Variables for Production
+
+Update your `.env` file:
+
+```env
+# Frontend URL - Your public domain
+FRONTEND_URL=https://app.yourdomain.com
+
+# CORS - Allow your frontend domain
+ALLOWED_ORIGINS=https://app.yourdomain.com
+
+# Nginx Proxy Manager ports (if using custom ports)
+NPM_HTTP_PORT=80      # HTTP (for Let's Encrypt)
+NPM_HTTPS_PORT=443    # HTTPS (main access)
+NPM_ADMIN_PORT=81     # Admin UI (internal only)
+
+# Backend CORS - Set to your frontend domain
+# The backend will automatically use FRONTEND_URL for CORS if ALLOWED_ORIGINS is empty
+```
+
+### Router/Firewall Configuration
+
+**Port Forwarding (on your router):**
+- Forward **Port 80** → Your NAS IP (for Let's Encrypt)
+- Forward **Port 443** → Your NAS IP (for HTTPS access)
+- **DO NOT forward:** 5432 (PostgreSQL), 5000 (Backend), 8025 (Mailpit)
+
+**Firewall Rules:**
+- Allow incoming: 80, 443
+- Block all other incoming ports to your NAS
+- Backend services are only accessible via Docker internal network
+
+### Testing Public Access
+
+1. **Verify HTTPS works:**
+   ```bash
+   curl -I https://app.yourdomain.com
+   # Should return 200 OK
+   ```
+
+2. **Verify API access:**
+   ```bash
+   curl https://api.yourdomain.com/api/health
+   # Should return: {"ok":true,"status":"healthy"}
+   ```
+
+3. **Check CORS headers:**
+   - Browser DevTools → Network tab
+   - Verify `Access-Control-Allow-Origin` includes your frontend domain
+
+### DNS Configuration
+
+Point your domain's DNS to your NAS's public IP:
+- `A Record`: `app.yourdomain.com` → `YOUR_PUBLIC_IP`
+- `A Record`: `api.yourdomain.com` → `YOUR_PUBLIC_IP`
+- `A Record`: `yourdomain.com` → `YOUR_PUBLIC_IP` (if using root domain)
+
+### Recommended Subdomains
+
+- **Frontend:** `app.yourdomain.com` or `yourdomain.com`
+- **API:** `api.yourdomain.com`
+- **Mailpit (optional):** `mailpit.yourdomain.com` (with authentication)
+
 ## Production Recommendations
 
-1. **Use HTTPS:** Set up nginx/Caddy reverse proxy with SSL certificates
-2. **Change all default passwords:** Database, JWT secret, etc.
+1. **Use HTTPS:** ✅ Required for public deployment (via Nginx Proxy Manager)
+2. **Change all default passwords:** Database, JWT secret, NPM admin password
 3. **Set up backups:** Regular database and file backups
 4. **Monitor logs:** Set up log rotation and monitoring
 5. **Update regularly:** Keep Docker images and dependencies updated
-6. **Use a domain:** Instead of IP address for better UX
+6. **Use a domain:** ✅ Required for HTTPS/SSL certificates
+7. **Enable firewall:** Block all ports except 80, 443 on your router
+8. **Restrict Mailpit access:** Use authentication or IP whitelisting if exposing
+9. **Regular security updates:** Keep your NAS/server OS updated
 
 ## Quick Reference
 

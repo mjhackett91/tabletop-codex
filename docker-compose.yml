@@ -1,4 +1,5 @@
-version: "3.8"
+# Docker Compose file - Version removed (obsolete in Compose v2)
+# Use: docker compose up -d
 
 services:
   postgres:
@@ -9,8 +10,9 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-ttc_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ttc_password_change_in_production}
       - PGDATA=/var/lib/postgresql/data/pgdata
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # Postgres is internal-only (not exposed to host) - accessed via docker network
+    expose:
+      - "5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -91,13 +93,18 @@ services:
     restart: unless-stopped
 
   # Mailpit - Local SMTP server for catching emails (perfect for self-hosted/development)
-  # View emails at http://YOUR_NAS_IP:${MAILPIT_UI_PORT:-8025}
+  # For local network access: View emails at http://YOUR_NAS_IP:${MAILPIT_UI_PORT:-8025}
+  # For production: Access via reverse proxy (internal-only by default)
   mailpit:
     image: axllent/mailpit:latest
     container_name: ttc-mailpit
+    # For local/development: expose ports. For production, use docker-compose.prod.yml which uses expose
     ports:
-      - "${MAILPIT_SMTP_PORT:-1025}:1025"  # SMTP port (for sending emails)
-      - "${MAILPIT_UI_PORT:-8025}:8025"  # Web UI port (for viewing emails)
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"  # SMTP port (internal use only in production)
+      - "${MAILPIT_UI_PORT:-8025}:8025"  # Web UI port (access via reverse proxy in production)
+    expose:
+      - "1025"  # SMTP port (for internal use)
+      - "8025"  # Web UI port (for reverse proxy access)
     restart: unless-stopped
     environment:
       - MP_SMTP_AUTH_ACCEPT_ANY=1  # Accept any credentials (fine for local/internal use)

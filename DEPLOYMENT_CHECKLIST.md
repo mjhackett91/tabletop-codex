@@ -53,6 +53,26 @@ Use this checklist when deploying Table Top Codex to your NAS/server.
 - [ ] Firewall rules configured (if applicable)
 - [ ] Regular backups scheduled (database + uploads)
 
+### Step 7: Public Launch Checklist (If Exposing to Internet)
+- [ ] Using `docker-compose.prod.yml` for production deployment
+- [ ] PostgreSQL is **NOT** exposed on host (no port mapping)
+- [ ] Mailpit is **NOT** publicly exposed (or behind auth proxy)
+- [ ] Backend is **NOT** directly exposed (using `expose:` only)
+- [ ] Frontend is **NOT** directly exposed (using `expose:` only)
+- [ ] Nginx Proxy Manager is configured and running
+- [ ] Only ports 80 and 443 are forwarded from router to NAS
+- [ ] **DO NOT forward:** 5432 (PostgreSQL), 5000 (Backend), 8025 (Mailpit), 81 (NPM Admin)
+- [ ] SSL certificates configured in Nginx Proxy Manager
+- [ ] Frontend proxy host configured (`app.yourdomain.com` → `ttc-frontend:80`)
+- [ ] Backend proxy host configured (`api.yourdomain.com` → `ttc-backend:5000`)
+- [ ] `FRONTEND_URL` set to HTTPS domain (e.g., `https://app.yourdomain.com`)
+- [ ] `ALLOWED_ORIGINS` configured for CORS
+- [ ] NPM admin password changed from default
+- [ ] Mailpit access (if public) has authentication/IP whitelisting
+- [ ] Firewall blocks all ports except 80, 443
+- [ ] DNS records point to your public IP
+- [ ] Tested HTTPS access from external network
+
 ## Post-Deployment
 
 - [ ] Bookmarked Mailpit UI for password reset links

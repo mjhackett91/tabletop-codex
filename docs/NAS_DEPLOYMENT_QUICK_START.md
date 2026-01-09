@@ -37,9 +37,19 @@ POSTGRES_PASSWORD=your-secure-password  # ← CHANGE THIS
 ```
 
 ### 3. Deploy
+
+**For Local Network Access:**
 ```bash
 docker compose up -d --build
 ```
+
+**For Public HTTPS Deployment:**
+```bash
+# Use production compose (includes Nginx Proxy Manager, internal-only services)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+See `docs/DEPLOYMENT.md` for complete HTTPS setup instructions.
 
 ### 4. Verify
 ```bash
