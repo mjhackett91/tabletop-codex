@@ -33,6 +33,8 @@ import {
   Select,
   MenuItem,
   InputLabel,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -44,6 +46,8 @@ import RichTextEditor from "./RichTextEditor";
 import CampaignNav from "./CampaignNav";
 import CharacterSheetEditor from "./CharacterSheetEditor";
 import BackButton from "./BackButton";
+import ImageGallery from "./ImageGallery";
+import TagSelector from "./TagSelector";
 
 const TYPE_CONFIG = {
   player: {
@@ -103,6 +107,8 @@ export default function CharacterListPage({ type }) {
   const [participants, setParticipants] = useState([]);
   const [userRole, setUserRole] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [dialogTab, setDialogTab] = useState(0);
+  const [selectedTagIds, setSelectedTagIds] = useState([]);
 
   const config = TYPE_CONFIG[type];
 
@@ -118,6 +124,12 @@ export default function CharacterListPage({ type }) {
       console.log("Fetching characters for campaign:", campaignId, "type:", type);
       const data = await apiClient.get(`/api/campaigns/${campaignId}/characters?type=${type}`);
       console.log("Characters data received:", data);
+      // Log tags for each character to debug
+      if (Array.isArray(data)) {
+        data.forEach(char => {
+          console.log(`Character "${char.name}" (ID: ${char.id}) tags:`, char.tags || []);
+        });
+      }
       setCharacters(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Failed to fetch characters:", error);
@@ -232,8 +244,20 @@ export default function CharacterListPage({ type }) {
     setSnackbar({ ...snackbar, open: false });
   };
 
-  const handleOpenDialog = (character = null) => {
+  // Fetch tags for a character
+  const fetchCharacterTags = async (characterId) => {
+    try {
+      const tags = await apiClient.get(`/api/campaigns/${campaignId}/entities/character/${characterId}/tags`);
+      setSelectedTagIds(tags.map(tag => tag.id));
+    } catch (error) {
+      console.error("Failed to fetch character tags:", error);
+      setSelectedTagIds([]);
+    }
+  };
+
+  const handleOpenDialog = async (character = null) => {
     setEditingCharacter(character);
+    setDialogTab(0); // Reset to first tab when opening dialog
     
     // Determine default visibility based on who is creating and what type
     let defaultVisibility = "dm-only";
@@ -259,12 +283,20 @@ export default function CharacterListPage({ type }) {
       visibility: defaultVisibility,
       player_user_id: character?.player_user_id || null
     });
+    
+    if (character) {
+      await fetchCharacterTags(character.id);
+    } else {
+      setSelectedTagIds([]);
+    }
+    
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingCharacter(null);
+    setSelectedTagIds([]);
     setFormData({ 
       name: "", 
       description: "", 
@@ -327,12 +359,45 @@ export default function CharacterListPage({ type }) {
         }
       }
 
+      let characterId;
       if (editingCharacter) {
-        await apiClient.put(`/api/campaigns/${campaignId}/characters/${editingCharacter.id}`, payload);
+        const result = await apiClient.put(`/api/campaigns/${campaignId}/characters/${editingCharacter.id}`, payload);
+        characterId = result?.id || editingCharacter.id;
+        console.log(`[CharacterListPage] Updated character, ID: ${characterId}, result:`, result);
       } else {
-        await apiClient.post(`/api/campaigns/${campaignId}/characters`, payload);
+        const result = await apiClient.post(`/api/campaigns/${campaignId}/characters`, payload);
+        characterId = result?.id;
+        console.log(`[CharacterListPage] Created character, ID: ${characterId}, result:`, result);
       }
 
+      // Update tags - always save, even if empty array (to clear tags)
+      if (characterId) {
+        try {
+          console.log(`[CharacterListPage] Saving tags for character ${characterId}:`, selectedTagIds);
+          const tagsResult = await apiClient.post(
+            `/api/campaigns/${campaignId}/entities/character/${characterId}/tags`,
+            { tagIds: selectedTagIds || [] }
+          );
+          console.log(`[CharacterListPage] Tags saved successfully, received:`, tagsResult);
+          // Small delay to ensure database commit
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (error) {
+          console.error("[CharacterListPage] Failed to update character tags:", error);
+          console.error("[CharacterListPage] Error details:", {
+            characterId,
+            campaignId,
+            selectedTagIds,
+            errorMessage: error.message,
+            errorResponse: error.response?.data
+          });
+          // Don't fail the whole operation if tags fail
+        }
+      } else {
+        console.error("[CharacterListPage] No characterId available to save tags!");
+      }
+
+      // Refresh the list to show updated tags
+      console.log(`[CharacterListPage] Refreshing character list after tag update...`);
       await fetchCharacters();
       handleCloseDialog();
       showSnackbar(
@@ -440,6 +505,7 @@ export default function CharacterListPage({ type }) {
             <TableRow>
               <TableCell>Name</TableCell>
               <TableCell>Alignment</TableCell>
+              <TableCell>Tags</TableCell>
               <TableCell>Description</TableCell>
               <TableCell>Created</TableCell>
               <TableCell align="right">Actions</TableCell>
@@ -448,7 +514,7 @@ export default function CharacterListPage({ type }) {
           <TableBody>
             {characters.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     No {config.plural.toLowerCase()} yet. Create your first {config.label.toLowerCase()}!
                   </Typography>
@@ -498,17 +564,56 @@ export default function CharacterListPage({ type }) {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Box
-                      sx={{ 
-                        maxWidth: 300, 
-                        overflow: "hidden", 
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        "& p": { margin: 0, display: "inline" },
-                        "& *": { display: "inline" }
-                      }}
-                      dangerouslySetInnerHTML={{ __html: character.description || "<span style='color: #bdbdbd'>No description</span>" }}
-                    />
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                      {character.tags && character.tags.length > 0 ? (
+                        character.tags.map((tag) => (
+                          <Chip
+                            key={tag.id}
+                            label={tag.name}
+                            size="small"
+                            sx={{
+                              backgroundColor: tag.color || "#616161",
+                              color: "#fff",
+                              fontSize: "0.7rem",
+                              height: 20
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          No tags
+                        </Typography>
+                      )}
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      // Check if description has actual content (not just empty HTML tags)
+                      const hasContent = character.description && 
+                        character.description.trim() && 
+                        character.description.replace(/<[^>]*>/g, '').trim().length > 0;
+                      
+                      if (hasContent) {
+                        return (
+                          <Box
+                            sx={{ 
+                              maxWidth: 300, 
+                              overflow: "hidden", 
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              "& p": { margin: 0, display: "inline" },
+                              "& *": { display: "inline" }
+                            }}
+                            dangerouslySetInnerHTML={{ __html: character.description }}
+                          />
+                        );
+                      }
+                      return (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
+                          No description
+                        </Typography>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     <Box>
@@ -589,8 +694,15 @@ export default function CharacterListPage({ type }) {
             )}
           </Typography>
         </DialogTitle>
-        <DialogContent dividers>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
+        <DialogContent dividers sx={{ overflow: "auto" }}>
+          <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ mb: 2 }}>
+            <Tab label="Details" />
+            <Tab label="Images" />
+          </Tabs>
+
+          {/* Details Tab */}
+          {dialogTab === 0 && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
             {/* Name - read-only for players editing their own character */}
             <TextField
               autoFocus={userRole === "dm"}
@@ -693,6 +805,21 @@ export default function CharacterListPage({ type }) {
               />
             </Box>
 
+            {/* Tags */}
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Tags
+              </Typography>
+              <TagSelector
+                campaignId={campaignId}
+                selectedTagIds={selectedTagIds}
+                onChange={setSelectedTagIds}
+                entityType="character"
+                entityId={editingCharacter?.id}
+                userRole={userRole}
+              />
+            </Box>
+
             {/* Visibility - for players editing their own player character, show a simplified visibility control */}
             {userRole === "player" && editingCharacter && editingCharacter.type === "player" && editingCharacter.player_user_id === currentUserId ? (
               <Box>
@@ -762,6 +889,29 @@ export default function CharacterListPage({ type }) {
               </Box>
             )}
           </Box>
+          )}
+
+          {/* Images Tab */}
+          {dialogTab === 1 && (
+            <Box sx={{ pt: 2 }}>
+              {editingCharacter ? (
+                <ImageGallery
+                  campaignId={campaignId}
+                  entityType="character"
+                  entityId={editingCharacter.id}
+                  onUpdate={() => {
+                    // Optionally refresh character data if needed
+                  }}
+                />
+              ) : (
+                <Box sx={{ textAlign: "center", py: 4 }}>
+                  <Typography color="text.secondary">
+                    Save the {config.label.toLowerCase()} first to upload images.
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Close</Button>

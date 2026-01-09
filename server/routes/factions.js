@@ -58,7 +58,32 @@ router.get("/:campaignId/factions", requireCampaignAccess, (req, res) => {
 
     const factions = db.prepare(query).all(...params);
 
-    res.json(factions);
+    // Get tags for each faction
+    const factionsWithTags = factions.map(faction => {
+      try {
+        // Get tags for this faction
+        const tags = db.prepare(`
+          SELECT t.*
+          FROM tags t
+          INNER JOIN entity_tags et ON t.id = et.tag_id
+          WHERE et.entity_type = 'faction' AND et.entity_id = ? AND t.campaign_id = ?
+          ORDER BY t.name ASC
+        `).all(faction.id, campaignId);
+
+        return {
+          ...faction,
+          tags
+        };
+      } catch (err) {
+        console.error("Error processing faction:", faction.id, err);
+        return {
+          ...faction,
+          tags: []
+        };
+      }
+    });
+
+    res.json(factionsWithTags);
   } catch (error) {
     console.error("Error fetching factions:", error);
     console.error("Error stack:", error.stack);
@@ -98,7 +123,19 @@ router.get("/:campaignId/factions/:id", requireCampaignAccess, (req, res) => {
       return res.status(404).json({ error: "Faction not found" });
     }
 
-    res.json(faction);
+    // Get tags for this faction
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'faction' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(faction.id, campaignId);
+
+    res.json({
+      ...faction,
+      tags
+    });
   } catch (error) {
     console.error("Error fetching faction:", error);
     res.status(500).json({ error: "Failed to fetch faction" });
@@ -144,7 +181,19 @@ router.post("/:campaignId/factions", requireCampaignDM, (req, res) => {
       `)
       .get(result.lastInsertRowid);
 
-    res.status(201).json(newFaction);
+    // Get tags for this faction
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'faction' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(newFaction.id, campaignId);
+
+    res.status(201).json({
+      ...newFaction,
+      tags
+    });
   } catch (error) {
     console.error("Error creating faction:", error);
     res.status(500).json({ error: "Failed to create faction" });
@@ -199,7 +248,19 @@ router.put("/:campaignId/factions/:id", requireCampaignDM, (req, res) => {
       `)
       .get(id);
 
-    res.json(updatedFaction);
+    // Get tags for this faction
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'faction' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(id, campaignId);
+
+    res.json({
+      ...updatedFaction,
+      tags
+    });
   } catch (error) {
     console.error("Error updating faction:", error);
     res.status(500).json({ error: "Failed to update faction" });

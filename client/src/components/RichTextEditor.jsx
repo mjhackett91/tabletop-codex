@@ -35,6 +35,7 @@ const RichTextEditor = ({
     factions: [],
     world_info: [],
     quests: [],
+    creatures: [],
     equipment: [] // Equipment items from character sheets
   });
 
@@ -43,14 +44,15 @@ const RichTextEditor = ({
       // Fetch entities for autocomplete
       const fetchEntities = async () => {
         try {
-          const [playerChars, npcs, antagonists, locations, factions, worldInfo, quests] = await Promise.all([
+          const [playerChars, npcs, antagonists, locations, factions, worldInfo, quests, creatures] = await Promise.all([
             apiClient.get(`/api/campaigns/${effectiveCampaignId}/characters?type=player`).catch(() => []),
             apiClient.get(`/api/campaigns/${effectiveCampaignId}/characters?type=npc`).catch(() => []),
             apiClient.get(`/api/campaigns/${effectiveCampaignId}/characters?type=antagonist`).catch(() => []),
             apiClient.get(`/api/campaigns/${effectiveCampaignId}/locations`).catch(() => []),
             apiClient.get(`/api/campaigns/${effectiveCampaignId}/factions`).catch(() => []),
             apiClient.get(`/api/campaigns/${effectiveCampaignId}/world-info`).catch(() => []),
-            apiClient.get(`/api/campaigns/${effectiveCampaignId}/quests`).catch(() => [])
+            apiClient.get(`/api/campaigns/${effectiveCampaignId}/quests`).catch(() => []),
+            apiClient.get(`/api/campaigns/${effectiveCampaignId}/creatures`).catch(() => [])
           ]);
 
           const allCharacters = [
@@ -90,6 +92,7 @@ const RichTextEditor = ({
             factions: factions || [],
             world_info: worldInfo || [],
             quests: quests || [],
+            creatures: creatures || [],
             equipment: Array.from(equipmentMap.values())
           };
           
@@ -99,6 +102,7 @@ const RichTextEditor = ({
             factions: entitiesData.factions.length,
             world_info: entitiesData.world_info.length,
             quests: entitiesData.quests.length,
+            creatures: entitiesData.creatures.length,
             equipment: entitiesData.equipment.length,
             sampleCharacter: entitiesData.characters[0]?.name || "none",
             sampleEquipment: entitiesData.equipment[0]?.name || "none"
@@ -135,6 +139,7 @@ const RichTextEditor = ({
         factions: currentEntities.factions.length,
         world_info: currentEntities.world_info.length,
         quests: currentEntities.quests.length,
+        creatures: currentEntities.creatures.length,
         equipment: currentEntities.equipment.length
       });
 
@@ -218,6 +223,19 @@ const RichTextEditor = ({
         }
       });
 
+      // Search creatures (by name only)
+      currentEntities.creatures.forEach(creature => {
+        if (creature.name && (shouldShowAll || nameMatches(creature.name, searchTerm))) {
+          results.push({
+            id: creature.id,
+            label: creature.name,
+            type: "creature",
+            typeLabel: `Creature (${creature.creature_type || "unknown"})`,
+            matchScore: creature.name.toLowerCase() === searchTerm ? 0 : 1
+          });
+        }
+      });
+
       // Search equipment (by name only)
       currentEntities.equipment.forEach(item => {
         if (item.name && (shouldShowAll || nameMatches(item.name, searchTerm))) {
@@ -238,14 +256,15 @@ const RichTextEditor = ({
         if (a.matchScore !== b.matchScore) {
           return a.matchScore - b.matchScore;
         }
-        // Second: type priority (characters, locations, factions, equipment, world_info, quests)
+        // Second: type priority (characters, locations, factions, equipment, creatures, world_info, quests)
         const typeOrder = { 
           character: 0, 
           location: 1, 
           faction: 2, 
           equipment: 3,
-          world_info: 4, 
-          quest: 5 
+          creature: 4,
+          world_info: 5, 
+          quest: 6 
         };
         const typeDiff = (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
         if (typeDiff !== 0) return typeDiff;
@@ -271,6 +290,7 @@ const RichTextEditor = ({
       faction: `/campaigns/${effectiveCampaignId}/factions`,
       world_info: `/campaigns/${effectiveCampaignId}/world-info`,
       quest: `/campaigns/${effectiveCampaignId}/quests`,
+      creature: `/campaigns/${effectiveCampaignId}/creatures`,
       equipment: characterId 
         ? `/campaigns/${effectiveCampaignId}/characters` // Navigate to character's equipment
         : `/campaigns/${effectiveCampaignId}/characters`

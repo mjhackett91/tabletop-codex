@@ -60,7 +60,32 @@ router.get("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
     const sessions = db.prepare(query).all(...params);
     console.log(`[Sessions GET] Found ${sessions.length} sessions`);
 
-    res.json(sessions);
+    // Get tags for each session
+    const sessionsWithTags = sessions.map(session => {
+      try {
+        // Get tags for this session
+        const tags = db.prepare(`
+          SELECT t.*
+          FROM tags t
+          INNER JOIN entity_tags et ON t.id = et.tag_id
+          WHERE et.entity_type = 'session' AND et.entity_id = ? AND t.campaign_id = ?
+          ORDER BY t.name ASC
+        `).all(session.id, campaignId);
+
+        return {
+          ...session,
+          tags
+        };
+      } catch (err) {
+        console.error("Error processing session:", session.id, err);
+        return {
+          ...session,
+          tags: []
+        };
+      }
+    });
+
+    res.json(sessionsWithTags);
   } catch (error) {
     console.error("Error fetching sessions:", error);
     console.error("Error stack:", error.stack);
@@ -122,10 +147,20 @@ router.get("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
     
     const playerNotes = db.prepare(playerNotesQuery).all(...playerNotesParams);
 
+    // Get tags for this session
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'session' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(session.id, campaignId);
+
     res.json({ 
       ...session, 
       session_notes: sessionNotes,
-      player_notes: playerNotes
+      player_notes: playerNotes,
+      tags
     });
   } catch (error) {
     console.error("Error fetching session:", error);
@@ -199,7 +234,19 @@ router.post("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
       .prepare("SELECT * FROM sessions WHERE id = ?")
       .get(result.lastInsertRowid);
 
-    res.status(201).json(newSession);
+    // Get tags for this session
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'session' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(newSession.id, campaignId);
+
+    res.status(201).json({
+      ...newSession,
+      tags
+    });
   } catch (error) {
     console.error("Error creating session:", error);
     res.status(500).json({ error: "Failed to create session" });
@@ -272,7 +319,19 @@ router.put("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
       .prepare("SELECT * FROM sessions WHERE id = ?")
       .get(id);
 
-    res.json(updatedSession);
+    // Get tags for this session
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'session' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(id, campaignId);
+
+    res.json({
+      ...updatedSession,
+      tags
+    });
   } catch (error) {
     console.error("Error updating session:", error);
     res.status(500).json({ error: "Failed to update session" });

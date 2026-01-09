@@ -53,6 +53,8 @@ import apiClient from "../services/apiClient";
 import RichTextEditor from "../components/RichTextEditor";
 import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
+import ImageGallery from "../components/ImageGallery";
+import TagSelector from "../components/TagSelector";
 
 const SECTIONS = [
   { key: "summary", label: "Summary", icon: EventIcon },
@@ -71,6 +73,7 @@ export default function Sessions() {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
+  const [dialogTab, setDialogTab] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
   const [formData, setFormData] = useState({ 
     session_number: "",
@@ -114,6 +117,7 @@ export default function Sessions() {
   const [playerNoteVisibility, setPlayerNoteVisibility] = useState("dm-only");
   const [editingPlayerNote, setEditingPlayerNote] = useState(null);
   const [addingPlayerNote, setAddingPlayerNote] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState([]);
 
   // Fetch user role
   const fetchUserRole = async () => {
@@ -227,7 +231,18 @@ export default function Sessions() {
     }
   }, [openDialog, editingSession, campaignId]);
 
-  const handleOpenDialog = (session = null) => {
+  // Fetch tags for a session
+  const fetchSessionTags = async (sessionId) => {
+    try {
+      const tags = await apiClient.get(`/api/campaigns/${campaignId}/entities/session/${sessionId}/tags`);
+      setSelectedTagIds(tags.map(tag => tag.id));
+    } catch (error) {
+      console.error("Failed to fetch session tags:", error);
+      setSelectedTagIds([]);
+    }
+  };
+
+  const handleOpenDialog = async (session = null) => {
     if (session) {
       setEditingSession(session);
       setFormData({
@@ -244,6 +259,7 @@ export default function Sessions() {
         notes_quests: session.notes_quests || "",
         visibility: session.visibility || (userRole === "player" ? "player-visible" : "dm-only")
       });
+      await fetchSessionTags(session.id);
     } else {
       setEditingSession(null);
       setFormData({
@@ -260,6 +276,7 @@ export default function Sessions() {
         notes_quests: "",
         visibility: userRole === "player" ? "player-visible" : "dm-only"
       });
+      setSelectedTagIds([]);
     }
     setSelectedEntities({
       characters: "",
@@ -270,6 +287,7 @@ export default function Sessions() {
       world_info: "",
       quests: ""
     });
+    setDialogTab(0);
     setActiveTab(0);
     setOpenDialog(true);
   };
@@ -305,6 +323,7 @@ export default function Sessions() {
     setPlayerNoteVisibility("dm-only");
     setEditingPlayerNote(null);
     setAddingPlayerNote(false);
+    setSelectedTagIds([]);
   };
 
   const handleSubmit = async () => {
@@ -324,20 +343,35 @@ export default function Sessions() {
         visibility: formData.visibility
       };
 
+      let sessionId;
       if (editingSession) {
         await apiClient.put(`/api/campaigns/${campaignId}/sessions/${editingSession.id}`, payload);
+        sessionId = editingSession.id;
         setSnackbar({
           open: true,
           message: "Session updated successfully",
           severity: "success"
         });
       } else {
-        await apiClient.post(`/api/campaigns/${campaignId}/sessions`, payload);
+        const result = await apiClient.post(`/api/campaigns/${campaignId}/sessions`, payload);
+        sessionId = result.id;
         setSnackbar({
           open: true,
           message: "Session created successfully",
           severity: "success"
         });
+      }
+
+      // Update tags
+      if (sessionId) {
+        try {
+          await apiClient.post(
+            `/api/campaigns/${campaignId}/entities/session/${sessionId}/tags`,
+            { tagIds: selectedTagIds }
+          );
+        } catch (error) {
+          console.error("Failed to update session tags:", error);
+        }
       }
 
       handleCloseDialog();
@@ -633,6 +667,7 @@ export default function Sessions() {
               <TableCell>Session #</TableCell>
               <TableCell>Title</TableCell>
               <TableCell>Date Played</TableCell>
+              <TableCell>Tags</TableCell>
               <TableCell>Summary Preview</TableCell>
               <TableCell>Created</TableCell>
               <TableCell align="right">Actions</TableCell>
@@ -641,13 +676,13 @@ export default function Sessions() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">Loading sessions...</Typography>
                 </TableCell>
               </TableRow>
             ) : sessions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     No sessions yet. Create your first session!
                   </Typography>
@@ -685,6 +720,27 @@ export default function Sessions() {
                         <Typography color="text.secondary" variant="caption" display="block">
                           by {session.created_by_username}
                         </Typography>
+                      )}
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                      {session.tags && session.tags.length > 0 ? (
+                        session.tags.map((tag) => (
+                          <Chip
+                            key={tag.id}
+                            label={tag.name}
+                            size="small"
+                            sx={{
+                              bgcolor: tag.color || "#757575",
+                              color: "white",
+                              fontSize: "0.7rem",
+                              height: 20
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <Typography color="text.secondary" variant="caption">—</Typography>
                       )}
                     </Box>
                   </TableCell>
@@ -771,6 +827,13 @@ export default function Sessions() {
           </Typography>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, display: "flex", flexDirection: "column", height: "100%" }}>
+          <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ borderBottom: 1, borderColor: "divider" }}>
+            <Tab label="Session Notes" />
+            <Tab label="Images" disabled={!editingSession?.id} />
+          </Tabs>
+
+          {dialogTab === 0 && (
+          <>
           <Box sx={{ p: 2, borderBottom: 1, borderColor: "divider" }}>
             <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
               <TextField
@@ -993,6 +1056,20 @@ export default function Sessions() {
                 {formData.visibility === "hidden" && "Hidden from all participants"}
               </Typography>
             </FormControl>
+
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Tags
+              </Typography>
+              <TagSelector
+                campaignId={campaignId}
+                selectedTagIds={selectedTagIds}
+                onChange={setSelectedTagIds}
+                entityType="session"
+                entityId={editingSession?.id}
+                userRole={userRole}
+              />
+            </Box>
           </Box>
 
           {/* Player Notes Section */}
@@ -1136,6 +1213,19 @@ export default function Sessions() {
                   )}
                 </Box>
               )}
+            </Box>
+          )}
+          </>
+          )}
+
+          {dialogTab === 1 && editingSession?.id && (
+            <Box sx={{ p: 2 }}>
+              <ImageGallery
+                campaignId={campaignId}
+                entityType="session"
+                entityId={editingSession.id}
+                onUpdate={fetchSessions}
+              />
             </Box>
           )}
         </DialogContent>

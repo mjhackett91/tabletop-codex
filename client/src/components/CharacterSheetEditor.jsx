@@ -34,7 +34,7 @@ const ABILITY_SCORES = [
 const CLASSES = [
   "Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk",
   "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard",
-  "Artificer", "Blood Hunter"
+  "Artificer", "Blood Hunter", "Other"
 ];
 
 // D&D 5e races
@@ -75,8 +75,11 @@ const getModifier = (score) => {
 const DEFAULT_SHEET = {
   // Basic Info
   class: "",
+  customClass: "",
+  subclass: "",
   level: 1,
   race: "",
+  customRace: "",
   background: "",
   
   // Ability Scores
@@ -246,7 +249,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player",
                 label="Class"
                 select
                 value={sheet.class || ""}
-                onChange={(e) => updateSheet({ class: e.target.value })}
+                onChange={(e) => updateSheet({ class: e.target.value, customClass: e.target.value === "Other" ? sheet.customClass : "" })}
                 sx={{ minWidth: 200 }}
                 disabled={readOnly}
               >
@@ -254,6 +257,28 @@ export default function CharacterSheetEditor({ value, onChange, type = "player",
                   <MenuItem key={cls} value={cls}>{cls}</MenuItem>
                 ))}
               </TextField>
+            </Grid>
+            {sheet.class === "Other" && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Custom Class Name"
+                  value={sheet.customClass || ""}
+                  onChange={(e) => updateSheet({ customClass: e.target.value })}
+                  placeholder="Enter custom class name..."
+                  disabled={readOnly}
+                />
+              </Grid>
+            )}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Subclass (Optional)"
+                value={sheet.subclass || ""}
+                onChange={(e) => updateSheet({ subclass: e.target.value })}
+                placeholder="e.g., Battle Master, Evocation, etc."
+                disabled={readOnly}
+              />
             </Grid>
             <Grid item xs={12} sm={3}>
               <TextField
@@ -272,7 +297,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player",
                 label="Race"
                 select
                 value={sheet.race || ""}
-                onChange={(e) => updateSheet({ race: e.target.value })}
+                onChange={(e) => updateSheet({ race: e.target.value, customRace: e.target.value === "Other" ? sheet.customRace : "" })}
                 sx={{ minWidth: 180 }}
                 disabled={readOnly}
               >
@@ -281,12 +306,25 @@ export default function CharacterSheetEditor({ value, onChange, type = "player",
                 ))}
               </TextField>
             </Grid>
+            {sheet.race === "Other" && (
+              <Grid item xs={12} sm={3}>
+                <TextField
+                  fullWidth
+                  label="Custom Race Name"
+                  value={sheet.customRace || ""}
+                  onChange={(e) => updateSheet({ customRace: e.target.value })}
+                  placeholder="Enter custom race name..."
+                  disabled={readOnly}
+                />
+              </Grid>
+            )}
             <Grid item xs={12}>
               <TextField
                 fullWidth
                 label="Background/Origin"
                 value={sheet.background || ""}
                 onChange={(e) => updateSheet({ background: e.target.value })}
+                placeholder="e.g., Noble, Hermit, Custom Background..."
                 disabled={readOnly}
               />
             </Grid>
@@ -419,8 +457,16 @@ export default function CharacterSheetEditor({ value, onChange, type = "player",
                 fullWidth
                 type="number"
                 label="Initiative"
-                value={sheet.initiative || 0}
-                onChange={(e) => updateSheet({ initiative: parseInt(e.target.value) || 0 })}
+                value={sheet.initiative === 0 || sheet.initiative === null || sheet.initiative === undefined ? "" : sheet.initiative}
+                onChange={(e) => {
+                  const val = e.target.value === "" ? null : (isNaN(parseInt(e.target.value)) ? null : parseInt(e.target.value));
+                  updateSheet({ initiative: val ?? 0 });
+                }}
+                onFocus={(e) => {
+                  if (e.target.value === "0") {
+                    e.target.select();
+                  }
+                }}
                 disabled={readOnly}
               />
             </Grid>
@@ -430,8 +476,16 @@ export default function CharacterSheetEditor({ value, onChange, type = "player",
                 fullWidth
                 type="number"
                 label="Speed (ft)"
-                value={sheet.speed || 30}
-                onChange={(e) => updateSheet({ speed: parseInt(e.target.value) || 30 })}
+                value={sheet.speed === 0 || sheet.speed === null || sheet.speed === undefined ? "" : sheet.speed}
+                onChange={(e) => {
+                  const val = e.target.value === "" ? null : (isNaN(parseInt(e.target.value)) ? null : parseInt(e.target.value));
+                  updateSheet({ speed: val ?? 30 });
+                }}
+                onFocus={(e) => {
+                  if (e.target.value === "0") {
+                    e.target.select();
+                  }
+                }}
                 disabled={readOnly}
               />
             </Grid>

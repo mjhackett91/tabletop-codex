@@ -51,6 +51,8 @@ import apiClient from "../services/apiClient";
 import RichTextEditor from "../components/RichTextEditor";
 import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
+import ImageGallery from "../components/ImageGallery";
+import TagSelector from "../components/TagSelector";
 
 const QUEST_TYPES = [
   { value: "main", label: "Main Quest" },
@@ -116,6 +118,8 @@ export default function Quests() {
   const [links, setLinks] = useState([]);
   const [milestones, setMilestones] = useState([]);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+  const [selectedTagIds, setSelectedTagIds] = useState([]);
+  const [userRole, setUserRole] = useState(null);
   
   // Entity data for linking
   const [availableEntities, setAvailableEntities] = useState({
@@ -149,8 +153,19 @@ export default function Quests() {
     }
   };
 
+  // Fetch user role
+  const fetchUserRole = async () => {
+    try {
+      const roleData = await apiClient.get(`/api/campaigns/${campaignId}/my-role`);
+      setUserRole(roleData?.role || null);
+    } catch (error) {
+      console.error("Failed to fetch user role:", error);
+    }
+  };
+
   useEffect(() => {
     fetchQuests();
+    fetchUserRole();
   }, [campaignId]);
 
   // Check for navigation state to auto-open entity dialog
@@ -201,6 +216,7 @@ export default function Quests() {
         setObjectives(fullQuest.objectives || []);
         setLinks(fullQuest.links || []);
         setMilestones(fullQuest.milestones || []);
+        await fetchQuestTags(quest.id);
       } catch (error) {
         console.error("Failed to fetch quest details:", error);
         setSnackbar({
@@ -232,6 +248,7 @@ export default function Quests() {
       setObjectives([]);
       setLinks([]);
       setMilestones([]);
+      setSelectedTagIds([]);
     }
     setDialogTab(0);
     setOpenDialog(true);
@@ -241,6 +258,7 @@ export default function Quests() {
     setOpenDialog(false);
     setEditingQuest(null);
     setDialogTab(0);
+    setSelectedTagIds([]);
   };
 
   const handleSubmit = async () => {
@@ -264,20 +282,35 @@ export default function Quests() {
         milestones: milestones.filter(m => m.title && m.title.trim()), // Only include milestones with titles
       };
 
+      let questId;
       if (editingQuest) {
         await apiClient.put(`/api/campaigns/${campaignId}/quests/${editingQuest.id}`, payload);
+        questId = editingQuest.id;
         setSnackbar({
           open: true,
           message: "Quest updated successfully",
           severity: "success"
         });
       } else {
-        await apiClient.post(`/api/campaigns/${campaignId}/quests`, payload);
+        const result = await apiClient.post(`/api/campaigns/${campaignId}/quests`, payload);
+        questId = result.id;
         setSnackbar({
           open: true,
           message: "Quest created successfully",
           severity: "success"
         });
+      }
+
+      // Update tags
+      if (questId) {
+        try {
+          await apiClient.post(
+            `/api/campaigns/${campaignId}/entities/quest/${questId}/tags`,
+            { tagIds: selectedTagIds }
+          );
+        } catch (error) {
+          console.error("Failed to update quest tags:", error);
+        }
       }
 
       handleCloseDialog();
@@ -589,6 +622,7 @@ export default function Quests() {
               <TableCell>Title</TableCell>
               <TableCell>Type</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell>Tags</TableCell>
               <TableCell>Summary</TableCell>
               <TableCell>Urgency</TableCell>
               <TableCell align="right">Actions</TableCell>
@@ -597,13 +631,13 @@ export default function Quests() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">Loading quests...</Typography>
                 </TableCell>
               </TableRow>
             ) : quests.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     No quests yet. Create your first quest!
                   </Typography>
@@ -638,6 +672,27 @@ export default function Quests() {
                       size="small" 
                       color={getStatusColor(quest.status)}
                     />
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                      {quest.tags && quest.tags.length > 0 ? (
+                        quest.tags.map((tag) => (
+                          <Chip
+                            key={tag.id}
+                            label={tag.name}
+                            size="small"
+                            sx={{
+                              bgcolor: tag.color || "#757575",
+                              color: "white",
+                              fontSize: "0.7rem",
+                              height: 20
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <Typography color="text.secondary" variant="caption">—</Typography>
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell>
                     <Typography 
@@ -721,6 +776,7 @@ export default function Quests() {
             <Tab label="Links" />
             <Tab label="Rewards & Consequences" />
             <Tab label="Milestones" />
+            <Tab label="Images" disabled={!editingQuest?.id} />
           </Tabs>
 
           <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
@@ -878,6 +934,20 @@ export default function Quests() {
                       {formData.visibility === "hidden" && "Hidden from all participants"}
                     </Typography>
                   </FormControl>
+                </Box>
+
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Tags
+                  </Typography>
+                  <TagSelector
+                    campaignId={campaignId}
+                    selectedTagIds={selectedTagIds}
+                    onChange={setSelectedTagIds}
+                    entityType="quest"
+                    entityId={editingQuest?.id}
+                    userRole={userRole}
+                  />
                 </Box>
               </Box>
             )}
@@ -1218,6 +1288,17 @@ export default function Quests() {
                     No milestones yet. Click "Add Milestone" to track major quest events.
                   </Typography>
                 )}
+              </Box>
+            )}
+
+            {dialogTab === 5 && editingQuest?.id && (
+              <Box sx={{ pt: 2 }}>
+                <ImageGallery
+                  campaignId={campaignId}
+                  entityType="quest"
+                  entityId={editingQuest.id}
+                  onUpdate={fetchQuests}
+                />
               </Box>
             )}
           </Box>

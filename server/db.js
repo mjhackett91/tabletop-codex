@@ -279,6 +279,55 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_campaign_participants_campaign ON campaign_participants(campaign_id);
   CREATE INDEX IF NOT EXISTS idx_campaign_participants_user ON campaign_participants(user_id);
+
+  CREATE TABLE IF NOT EXISTS creatures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    source_type TEXT DEFAULT 'homebrew' CHECK(source_type IN ('homebrew', 'user-imported', 'other')),
+    visibility TEXT DEFAULT 'dm-only' CHECK(visibility IN ('dm-only', 'player-visible', 'hidden')),
+    tags TEXT, -- JSON array of tag strings
+    size TEXT CHECK(size IN ('Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan')),
+    creature_type TEXT,
+    subtype TEXT,
+    alignment TEXT,
+    challenge_rating TEXT,
+    proficiency_bonus INTEGER,
+    armor_class TEXT, -- JSON: {value:number, type?:string, notes?:string}
+    hit_points TEXT, -- JSON: {average:number, formula?:string, notes?:string}
+    hit_dice TEXT,
+    damage_vulnerabilities TEXT,
+    damage_resistances TEXT,
+    damage_immunities TEXT,
+    condition_immunities TEXT,
+    speeds TEXT, -- JSON: {walk?:number, fly?:number, swim?:number, climb?:number, burrow?:number, hover?:boolean}
+    senses TEXT, -- JSON: {blindsight?:number, darkvision?:number, tremorsense?:number, truesight?:number, passivePerception?:number}
+    languages TEXT,
+    abilities TEXT, -- JSON: {str:number, dex:number, con:number, int:number, wis:number, cha:number}
+    saving_throws TEXT, -- JSON array: [{ability:"str"|"dex"|..., bonus:number}]
+    skills TEXT, -- JSON array: [{skill:string, bonus:number}]
+    traits TEXT, -- JSON array: [{name:string, descriptionRichText:string}]
+    actions TEXT, -- JSON array: [{name:string, type:"action"|"bonus"|"reaction"|"legendary"|"lair"|"mythic"|"other", descriptionRichText:string}]
+    legendary_actions_meta TEXT, -- JSON: {actionsPerRound:number, descriptionRichText?:string}
+    lair_actions TEXT, -- JSON array: [{name:string, descriptionRichText:string}]
+    spellcasting TEXT, -- JSON: {type:"innate"|"prepared"|"pact"|"other", ability?:"int"|"wis"|"cha", saveDC?:number, attackBonus?:number, notesRichText?:string, spellsByLevel?:object, atWill?:string[], perDay?:object}
+    short_description TEXT,
+    appearance_rich_text TEXT,
+    lore_rich_text TEXT,
+    tactics_rich_text TEXT,
+    dm_notes_rich_text TEXT,
+    linked_entities TEXT, -- JSON: {npcs:[], factions:[], locations:[], quests:[], sessions:[]}
+    created_by_user_id INTEGER,
+    last_updated_by_user_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_creatures_campaign ON creatures(campaign_id);
+  CREATE INDEX IF NOT EXISTS idx_creatures_type ON creatures(creature_type);
+  CREATE INDEX IF NOT EXISTS idx_creatures_created_by ON creatures(created_by_user_id);
+  CREATE INDEX IF NOT EXISTS idx_creatures_updated_by ON creatures(last_updated_by_user_id);
 `);
 
 // Migrate quests table to add new columns if they don't exist
@@ -493,6 +542,72 @@ try {
   }
 } catch (err) {
   console.log("Creator/editor tracking migration check failed:", err.message);
+}
+
+// Migrate tags table to add is_premade column
+try {
+  const tagsColumns = db.prepare("PRAGMA table_info(tags)").all();
+  const tagColumnNames = tagsColumns.map(col => col.name);
+  
+  if (!tagColumnNames.includes("is_premade")) {
+    try {
+      db.exec("ALTER TABLE tags ADD COLUMN is_premade INTEGER DEFAULT 0");
+      console.log("Added is_premade column to tags table");
+    } catch (err) {
+      console.log(`Skipping is_premade column in tags: ${err.message}`);
+    }
+  }
+} catch (err) {
+  console.log("Tags migration check failed:", err.message);
+}
+
+// Seed pre-made tags for existing campaigns that don't have them
+try {
+  const premadeTags = [
+    { name: "Important", color: "#FF5733", is_premade: true },
+    { name: "NPC", color: "#33FF57", is_premade: true },
+    { name: "Location", color: "#3357FF", is_premade: true },
+    { name: "Quest", color: "#FF33F5", is_premade: true },
+    { name: "Lore", color: "#D4AF37", is_premade: true }, // Changed from bright yellow to gold for readability
+    { name: "Session", color: "#FF8C33", is_premade: true },
+    { name: "Player", color: "#33FFF5", is_premade: true },
+    { name: "Villain", color: "#8C33FF", is_premade: true },
+  ];
+
+  const campaigns = db.prepare("SELECT id FROM campaigns").all();
+  const tagStmt = db.prepare(
+    "INSERT OR IGNORE INTO tags (campaign_id, name, color, is_premade) VALUES (?, ?, ?, ?)"
+  );
+
+  let seededCount = 0;
+  for (const campaign of campaigns) {
+    for (const tag of premadeTags) {
+      try {
+        tagStmt.run(campaign.id, tag.name, tag.color, tag.is_premade ? 1 : 0);
+        seededCount++;
+      } catch (err) {
+        // Tag might already exist, skip
+      }
+    }
+  }
+  if (seededCount > 0) {
+    console.log(`Seeded ${seededCount} pre-made tags for existing campaigns`);
+  }
+
+  // Update existing "Lore" tags to use the darker gold color for better readability
+  try {
+    const updateStmt = db.prepare(
+      "UPDATE tags SET color = ? WHERE name = 'Lore' AND color = '#F5FF33'"
+    );
+    const result = updateStmt.run("#D4AF37");
+    if (result.changes > 0) {
+      console.log(`Updated ${result.changes} existing Lore tags to darker gold color`);
+    }
+  } catch (err) {
+    console.log("Could not update existing Lore tag colors:", err.message);
+  }
+} catch (err) {
+  console.log("Pre-made tag seeding check failed:", err.message);
 }
 
 export default db;

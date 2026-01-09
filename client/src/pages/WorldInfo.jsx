@@ -31,6 +31,8 @@ import {
   RadioGroup,
   FormControlLabel,
   Radio,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -42,6 +44,8 @@ import apiClient from "../services/apiClient";
 import RichTextEditor from "../components/RichTextEditor";
 import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
+import ImageGallery from "../components/ImageGallery";
+import TagSelector from "../components/TagSelector";
 
 const CATEGORIES = [
   "History",
@@ -64,6 +68,7 @@ export default function WorldInfo() {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingWorldInfo, setEditingWorldInfo] = useState(null);
+  const [dialogTab, setDialogTab] = useState(0);
   const [formData, setFormData] = useState({ 
     title: "", 
     content: "", 
@@ -71,6 +76,8 @@ export default function WorldInfo() {
     visibility: "dm-only"
   });
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+  const [selectedTagIds, setSelectedTagIds] = useState([]);
+  const [userRole, setUserRole] = useState(null);
 
   // Fetch world info
   const fetchWorldInfo = async () => {
@@ -96,8 +103,19 @@ export default function WorldInfo() {
     }
   };
 
+  // Fetch user role
+  const fetchUserRole = async () => {
+    try {
+      const roleData = await apiClient.get(`/api/campaigns/${campaignId}/my-role`);
+      setUserRole(roleData?.role || null);
+    } catch (error) {
+      console.error("Failed to fetch user role:", error);
+    }
+  };
+
   useEffect(() => {
     fetchWorldInfo();
+    fetchUserRole();
   }, [campaignId]);
 
   // Check for navigation state to auto-open entity dialog
@@ -122,14 +140,27 @@ export default function WorldInfo() {
     }
   }, [location.state, worldInfo]);
 
-  const handleOpenDialog = (info = null) => {
+  // Fetch tags for a world info entry
+  const fetchWorldInfoTags = async (infoId) => {
+    try {
+      const tags = await apiClient.get(`/api/campaigns/${campaignId}/entities/world_info/${infoId}/tags`);
+      setSelectedTagIds(tags.map(tag => tag.id));
+    } catch (error) {
+      console.error("Failed to fetch world info tags:", error);
+      setSelectedTagIds([]);
+    }
+  };
+
+  const handleOpenDialog = async (info = null) => {
     if (info) {
       setEditingWorldInfo(info);
       setFormData({
         title: info.title || "",
         content: info.content || "",
-        category: info.category || ""
+        category: info.category || "",
+        visibility: info.visibility || "dm-only"
       });
+      await fetchWorldInfoTags(info.id);
     } else {
       setEditingWorldInfo(null);
       setFormData({
@@ -138,13 +169,17 @@ export default function WorldInfo() {
         category: "",
         visibility: "dm-only"
       });
+      setSelectedTagIds([]);
     }
+    setDialogTab(0);
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingWorldInfo(null);
+    setDialogTab(0);
+    setSelectedTagIds([]);
     setFormData({ title: "", content: "", category: "", visibility: "dm-only" });
   };
 
@@ -165,20 +200,35 @@ export default function WorldInfo() {
         category: formData.category || null
       };
 
+      let infoId;
       if (editingWorldInfo) {
         await apiClient.put(`/api/campaigns/${campaignId}/world-info/${editingWorldInfo.id}`, payload);
+        infoId = editingWorldInfo.id;
         setSnackbar({
           open: true,
           message: "World info updated successfully",
           severity: "success"
         });
       } else {
-        await apiClient.post(`/api/campaigns/${campaignId}/world-info`, payload);
+        const result = await apiClient.post(`/api/campaigns/${campaignId}/world-info`, payload);
+        infoId = result.id;
         setSnackbar({
           open: true,
           message: "World info created successfully",
           severity: "success"
         });
+      }
+
+      // Update tags
+      if (infoId) {
+        try {
+          await apiClient.post(
+            `/api/campaigns/${campaignId}/entities/world_info/${infoId}/tags`,
+            { tagIds: selectedTagIds }
+          );
+        } catch (error) {
+          console.error("Failed to update world info tags:", error);
+        }
       }
 
       handleCloseDialog();
@@ -306,6 +356,7 @@ export default function WorldInfo() {
             <TableRow>
               <TableCell>Title</TableCell>
               <TableCell>Category</TableCell>
+              <TableCell>Tags</TableCell>
               <TableCell>Content</TableCell>
               <TableCell>Created</TableCell>
               <TableCell align="right">Actions</TableCell>
@@ -314,13 +365,13 @@ export default function WorldInfo() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">Loading world info...</Typography>
                 </TableCell>
               </TableRow>
             ) : worldInfo.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     No world information yet. Create your first entry!
                   </Typography>
@@ -348,6 +399,27 @@ export default function WorldInfo() {
                     {info.category && (
                       <Chip label={info.category} size="small" variant="outlined" />
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                      {info.tags && info.tags.length > 0 ? (
+                        info.tags.map((tag) => (
+                          <Chip
+                            key={tag.id}
+                            label={tag.name}
+                            size="small"
+                            sx={{
+                              bgcolor: tag.color || "#757575",
+                              color: "white",
+                              fontSize: "0.7rem",
+                              height: 20
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <Typography color="text.secondary" variant="caption">—</Typography>
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell>
                     <Box
@@ -429,6 +501,12 @@ export default function WorldInfo() {
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
+          <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ mb: 2 }}>
+            <Tab label="Details" />
+            <Tab label="Images" disabled={!editingWorldInfo?.id} />
+          </Tabs>
+
+          {dialogTab === 0 && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
             <TextField
               autoFocus
@@ -469,6 +547,20 @@ export default function WorldInfo() {
             </Box>
 
             <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Tags
+              </Typography>
+              <TagSelector
+                campaignId={campaignId}
+                selectedTagIds={selectedTagIds}
+                onChange={setSelectedTagIds}
+                entityType="world_info"
+                entityId={editingWorldInfo?.id}
+                userRole={userRole}
+              />
+            </Box>
+
+            <Box>
               <FormControl component="fieldset">
                 <FormLabel component="legend">Visibility</FormLabel>
                 <RadioGroup
@@ -500,6 +592,18 @@ export default function WorldInfo() {
               </FormControl>
             </Box>
           </Box>
+          )}
+
+          {dialogTab === 1 && editingWorldInfo?.id && (
+            <Box sx={{ pt: 2 }}>
+              <ImageGallery
+                campaignId={campaignId}
+                entityType="world_info"
+                entityId={editingWorldInfo.id}
+                onUpdate={fetchWorldInfo}
+              />
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>

@@ -33,6 +33,8 @@ import {
   RadioGroup,
   FormControlLabel,
   Radio,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -44,6 +46,8 @@ import apiClient from "../services/apiClient";
 import RichTextEditor from "../components/RichTextEditor";
 import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
+import ImageGallery from "../components/ImageGallery";
+import TagSelector from "../components/TagSelector";
 
 const LOCATION_TYPES = [
   "City", "Town", "Village", "Dungeon", "Castle", "Tavern", "Shop",
@@ -58,6 +62,7 @@ export default function Locations() {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingLocation, setEditingLocation] = useState(null);
+  const [dialogTab, setDialogTab] = useState(0);
   const [formData, setFormData] = useState({ 
     name: "", 
     description: "", 
@@ -66,6 +71,8 @@ export default function Locations() {
     visibility: "dm-only"
   });
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+  const [selectedTagIds, setSelectedTagIds] = useState([]);
+  const [userRole, setUserRole] = useState(null);
 
   // Fetch locations
   const fetchLocations = async () => {
@@ -91,8 +98,19 @@ export default function Locations() {
     }
   };
 
+  // Fetch user role
+  const fetchUserRole = async () => {
+    try {
+      const roleData = await apiClient.get(`/api/campaigns/${campaignId}/my-role`);
+      setUserRole(roleData?.role || null);
+    } catch (error) {
+      console.error("Failed to fetch user role:", error);
+    }
+  };
+
   useEffect(() => {
     fetchLocations();
+    fetchUserRole();
   }, [campaignId]);
 
   // Check for navigation state to auto-open entity dialog
@@ -133,7 +151,18 @@ export default function Locations() {
     }
   }, [location.state, locations]);
 
-  const handleOpenDialog = (location = null) => {
+  // Fetch tags for a location
+  const fetchLocationTags = async (locationId) => {
+    try {
+      const tags = await apiClient.get(`/api/campaigns/${campaignId}/entities/location/${locationId}/tags`);
+      setSelectedTagIds(tags.map(tag => tag.id));
+    } catch (error) {
+      console.error("Failed to fetch location tags:", error);
+      setSelectedTagIds([]);
+    }
+  };
+
+  const handleOpenDialog = async (location = null) => {
     if (location) {
       setEditingLocation(location);
       setFormData({
@@ -143,6 +172,7 @@ export default function Locations() {
         parent_location_id: location.parent_location_id || null,
         visibility: location.visibility || "dm-only"
       });
+      await fetchLocationTags(location.id);
     } else {
       setEditingLocation(null);
       setFormData({
@@ -152,13 +182,17 @@ export default function Locations() {
         parent_location_id: null,
         visibility: "dm-only"
       });
+      setSelectedTagIds([]);
     }
+    setDialogTab(0);
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingLocation(null);
+    setDialogTab(0);
+    setSelectedTagIds([]);
     setFormData({ name: "", description: "", location_type: "", parent_location_id: null, visibility: "dm-only" });
   };
 
@@ -181,20 +215,35 @@ export default function Locations() {
         visibility: formData.visibility
       };
 
+      let locationId;
       if (editingLocation) {
         await apiClient.put(`/api/campaigns/${campaignId}/locations/${editingLocation.id}`, payload);
+        locationId = editingLocation.id;
         setSnackbar({
           open: true,
           message: "Location updated successfully",
           severity: "success"
         });
       } else {
-        await apiClient.post(`/api/campaigns/${campaignId}/locations`, payload);
+        const result = await apiClient.post(`/api/campaigns/${campaignId}/locations`, payload);
+        locationId = result.id;
         setSnackbar({
           open: true,
           message: "Location created successfully",
           severity: "success"
         });
+      }
+
+      // Update tags
+      if (locationId) {
+        try {
+          await apiClient.post(
+            `/api/campaigns/${campaignId}/entities/location/${locationId}/tags`,
+            { tagIds: selectedTagIds }
+          );
+        } catch (error) {
+          console.error("Failed to update location tags:", error);
+        }
       }
 
       handleCloseDialog();
@@ -327,6 +376,7 @@ export default function Locations() {
             <TableRow>
               <TableCell>Name</TableCell>
               <TableCell>Type</TableCell>
+              <TableCell>Tags</TableCell>
               <TableCell>Parent Location</TableCell>
               <TableCell>Description</TableCell>
               <TableCell>Created</TableCell>
@@ -336,13 +386,13 @@ export default function Locations() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">Loading locations...</Typography>
                 </TableCell>
               </TableRow>
             ) : locations.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     No locations yet. Create your first location!
                   </Typography>
@@ -372,6 +422,27 @@ export default function Locations() {
                     )}
                   </TableCell>
                   <TableCell>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                      {location.tags && location.tags.length > 0 ? (
+                        location.tags.map((tag) => (
+                          <Chip
+                            key={tag.id}
+                            label={tag.name}
+                            size="small"
+                            sx={{
+                              bgcolor: tag.color || "#757575",
+                              color: "white",
+                              fontSize: "0.7rem",
+                              height: 20
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <Typography color="text.secondary" variant="caption">—</Typography>
+                      )}
+                    </Box>
+                  </TableCell>
+                  <TableCell>
                     {location.parent_location_name ? (
                       <Chip 
                         label={location.parent_location_name} 
@@ -384,19 +455,33 @@ export default function Locations() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Box
-                      sx={{ 
-                        maxWidth: 300, 
-                        overflow: "hidden", 
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        "& p": { margin: 0, display: "inline" },
-                        "& *": { display: "inline" }
-                      }}
-                      dangerouslySetInnerHTML={{ 
-                        __html: location.description || "<span style='color: #bdbdbd'>No description</span>" 
-                      }}
-                    />
+                    {(() => {
+                      // Check if description has actual content (not just empty HTML tags)
+                      const hasContent = location.description && 
+                        location.description.trim() && 
+                        location.description.replace(/<[^>]*>/g, '').trim().length > 0;
+                      
+                      if (hasContent) {
+                        return (
+                          <Box
+                            sx={{ 
+                              maxWidth: 300, 
+                              overflow: "hidden", 
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              "& p": { margin: 0, display: "inline" },
+                              "& *": { display: "inline" }
+                            }}
+                            dangerouslySetInnerHTML={{ __html: location.description }}
+                          />
+                        );
+                      }
+                      return (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
+                          No description
+                        </Typography>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     <Box>
@@ -463,6 +548,12 @@ export default function Locations() {
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
+          <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ mb: 2 }}>
+            <Tab label="Details" />
+            <Tab label="Images" disabled={!editingLocation?.id} />
+          </Tabs>
+
+          {dialogTab === 0 && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
             <TextField
               autoFocus
@@ -518,6 +609,20 @@ export default function Locations() {
             </Box>
 
             <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Tags
+              </Typography>
+              <TagSelector
+                campaignId={campaignId}
+                selectedTagIds={selectedTagIds}
+                onChange={setSelectedTagIds}
+                entityType="location"
+                entityId={editingLocation?.id}
+                userRole={userRole}
+              />
+            </Box>
+
+            <Box>
               <FormControl component="fieldset">
                 <FormLabel component="legend">Visibility</FormLabel>
                 <RadioGroup
@@ -549,6 +654,18 @@ export default function Locations() {
               </FormControl>
             </Box>
           </Box>
+          )}
+
+          {dialogTab === 1 && editingLocation?.id && (
+            <Box sx={{ pt: 2 }}>
+              <ImageGallery
+                campaignId={campaignId}
+                entityType="location"
+                entityId={editingLocation.id}
+                onUpdate={fetchLocations}
+              />
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>

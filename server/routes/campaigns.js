@@ -61,10 +61,36 @@ router.post("/", (req, res) => {
       "INSERT INTO campaigns (user_id, name, description) VALUES (?, ?, ?)"
     );
     const result = stmt.run(userId, name.trim(), description?.trim() || null);
+    const campaignId = result.lastInsertRowid;
+
+    // Create pre-made tags for the new campaign
+    const premadeTags = [
+      { name: "Important", color: "#FF5733", is_premade: true },
+      { name: "NPC", color: "#33FF57", is_premade: true },
+      { name: "Location", color: "#3357FF", is_premade: true },
+      { name: "Quest", color: "#FF33F5", is_premade: true },
+      { name: "Lore", color: "#D4AF37", is_premade: true }, // Changed from bright yellow to gold for readability
+      { name: "Session", color: "#FF8C33", is_premade: true },
+      { name: "Player", color: "#33FFF5", is_premade: true },
+      { name: "Villain", color: "#8C33FF", is_premade: true },
+    ];
+
+    const tagStmt = db.prepare(
+      "INSERT INTO tags (campaign_id, name, color, is_premade) VALUES (?, ?, ?, ?)"
+    );
+
+    for (const tag of premadeTags) {
+      try {
+        tagStmt.run(campaignId, tag.name, tag.color, tag.is_premade ? 1 : 0);
+      } catch (err) {
+        // Tag might already exist, skip
+        console.log(`Skipping premade tag ${tag.name}: ${err.message}`);
+      }
+    }
 
     const newCampaign = db
       .prepare("SELECT * FROM campaigns WHERE id = ?")
-      .get(result.lastInsertRowid);
+      .get(campaignId);
     res.status(201).json(newCampaign);
   } catch (error) {
     console.error("Error creating campaign:", error);

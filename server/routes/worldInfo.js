@@ -65,7 +65,32 @@ router.get("/:campaignId/world-info", requireCampaignAccess, (req, res) => {
     const worldInfo = db.prepare(query).all(...params);
     console.log(`[WorldInfo GET] Found ${worldInfo.length} world info entries`);
 
-    res.json(worldInfo);
+    // Get tags for each world info entry
+    const worldInfoWithTags = worldInfo.map(info => {
+      try {
+        // Get tags for this world info entry
+        const tags = db.prepare(`
+          SELECT t.*
+          FROM tags t
+          INNER JOIN entity_tags et ON t.id = et.tag_id
+          WHERE et.entity_type = 'world_info' AND et.entity_id = ? AND t.campaign_id = ?
+          ORDER BY t.name ASC
+        `).all(info.id, campaignId);
+
+        return {
+          ...info,
+          tags
+        };
+      } catch (err) {
+        console.error("Error processing world info:", info.id, err);
+        return {
+          ...info,
+          tags: []
+        };
+      }
+    });
+
+    res.json(worldInfoWithTags);
   } catch (error) {
     console.error("Error fetching world info:", error);
     console.error("Error stack:", error.stack);
@@ -105,7 +130,19 @@ router.get("/:campaignId/world-info/:id", requireCampaignAccess, (req, res) => {
       return res.status(404).json({ error: "World info not found" });
     }
 
-    res.json(worldInfo);
+    // Get tags for this world info entry
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'world_info' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(worldInfo.id, campaignId);
+
+    res.json({
+      ...worldInfo,
+      tags
+    });
   } catch (error) {
     console.error("Error fetching world info:", error);
     res.status(500).json({ error: "Failed to fetch world info" });
@@ -150,7 +187,19 @@ router.post("/:campaignId/world-info", requireCampaignDM, (req, res) => {
       `)
       .get(result.lastInsertRowid);
 
-    res.status(201).json(newWorldInfo);
+    // Get tags for this world info entry
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'world_info' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(newWorldInfo.id, campaignId);
+
+    res.status(201).json({
+      ...newWorldInfo,
+      tags
+    });
   } catch (error) {
     console.error("Error creating world info:", error);
     res.status(500).json({ error: "Failed to create world info" });
@@ -204,7 +253,19 @@ router.put("/:campaignId/world-info/:id", requireCampaignDM, (req, res) => {
       `)
       .get(id);
 
-    res.json(updatedWorldInfo);
+    // Get tags for this world info entry
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'world_info' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(id, campaignId);
+
+    res.json({
+      ...updatedWorldInfo,
+      tags
+    });
   } catch (error) {
     console.error("Error updating world info:", error);
     res.status(500).json({ error: "Failed to update world info" });

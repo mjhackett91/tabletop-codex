@@ -55,10 +55,46 @@ router.get("/:campaignId/characters", requireCampaignAccess, (req, res) => {
 
     const characters = db.prepare(query).all(...params);
 
-    res.json(characters.map(char => ({
-      ...char,
-      character_sheet: char.character_sheet ? JSON.parse(char.character_sheet) : null
-    })));
+    // Get tags for each character - ensure type consistency
+    const charactersWithTags = characters.map(char => {
+      try {
+        // Ensure char.id is treated as integer for consistency with how we save tags
+        const charId = typeof char.id === 'number' ? char.id : parseInt(char.id, 10);
+        
+        // Debug: Check what's in entity_tags for this character (try both types)
+        const entityTagsCheckInt = db.prepare(`
+          SELECT * FROM entity_tags 
+          WHERE entity_type = 'character' AND entity_id = ?
+        `).all(charId);
+        console.log(`[Characters GET] Character "${char.name}" (ID: ${char.id}, parsed: ${charId}, type: ${typeof char.id}) - entity_tags check (int):`, entityTagsCheckInt);
+        
+        // Get tags for this character - use integer ID to match how we save
+        const tags = db.prepare(`
+          SELECT t.*
+          FROM tags t
+          INNER JOIN entity_tags et ON t.id = et.tag_id
+          WHERE et.entity_type = 'character' AND et.entity_id = ? AND t.campaign_id = ?
+          ORDER BY t.name ASC
+        `).all(charId, parseInt(campaignId, 10));
+        
+        console.log(`[Characters GET] Character "${char.name}" (ID: ${char.id}) - tags found:`, tags.length, tags.map(t => t.name));
+
+        return {
+          ...char,
+          character_sheet: char.character_sheet ? JSON.parse(char.character_sheet) : null,
+          tags
+        };
+      } catch (err) {
+        console.error("Error processing character tags:", char.id, err);
+        return {
+          ...char,
+          character_sheet: char.character_sheet ? JSON.parse(char.character_sheet) : null,
+          tags: []
+        };
+      }
+    });
+
+    res.json(charactersWithTags);
   } catch (error) {
     console.error("Error fetching characters:", error);
     res.status(500).json({ error: "Failed to fetch characters" });
@@ -100,9 +136,19 @@ router.get("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
       return res.status(404).json({ error: "Character not found" });
     }
 
+    // Get tags for this character
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'character' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(character.id, campaignId);
+
     res.json({
       ...character,
-      character_sheet: character.character_sheet ? JSON.parse(character.character_sheet) : null
+      character_sheet: character.character_sheet ? JSON.parse(character.character_sheet) : null,
+      tags
     });
   } catch (error) {
     console.error("Error fetching character:", error);
@@ -179,9 +225,19 @@ router.post("/:campaignId/characters", requireCampaignAccess, (req, res) => {
       `)
       .get(result.lastInsertRowid);
 
+    // Get tags for this character
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'character' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(newCharacter.id, campaignId);
+
     res.status(201).json({
       ...newCharacter,
-      character_sheet: newCharacter.character_sheet ? JSON.parse(newCharacter.character_sheet) : null
+      character_sheet: newCharacter.character_sheet ? JSON.parse(newCharacter.character_sheet) : null,
+      tags
     });
   } catch (error) {
     console.error("Error creating character:", error);
@@ -305,9 +361,19 @@ router.put("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
       `)
       .get(id);
 
+    // Get tags for this character
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'character' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(id, campaignId);
+
     res.json({
       ...updated,
-      character_sheet: updated.character_sheet ? JSON.parse(updated.character_sheet) : null
+      character_sheet: updated.character_sheet ? JSON.parse(updated.character_sheet) : null,
+      tags
     });
   } catch (error) {
     console.error("Error updating character:", error);

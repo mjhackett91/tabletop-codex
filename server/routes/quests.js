@@ -61,12 +61,22 @@ function getQuestWithRelations(questId, campaignId, userRole = null) {
     `)
     .all(questId);
 
+  // Get tags for this quest
+  const tags = db.prepare(`
+    SELECT t.*
+    FROM tags t
+    INNER JOIN entity_tags et ON t.id = et.tag_id
+    WHERE et.entity_type = 'quest' AND et.entity_id = ? AND t.campaign_id = ?
+    ORDER BY t.name ASC
+  `).all(questId, campaignId);
+
   return {
     ...quest,
     links,
     objectives,
     milestones,
-    sessions: questSessions
+    sessions: questSessions,
+    tags
   };
 }
 
@@ -134,7 +144,32 @@ router.get("/:campaignId/quests", requireCampaignAccess, (req, res) => {
 
     const quests = db.prepare(query).all(...params);
 
-    res.json(quests);
+    // Get tags for each quest
+    const questsWithTags = quests.map(quest => {
+      try {
+        // Get tags for this quest
+        const tags = db.prepare(`
+          SELECT t.*
+          FROM tags t
+          INNER JOIN entity_tags et ON t.id = et.tag_id
+          WHERE et.entity_type = 'quest' AND et.entity_id = ? AND t.campaign_id = ?
+          ORDER BY t.name ASC
+        `).all(quest.id, campaignId);
+
+        return {
+          ...quest,
+          tags
+        };
+      } catch (err) {
+        console.error("Error processing quest:", quest.id, err);
+        return {
+          ...quest,
+          tags: []
+        };
+      }
+    });
+
+    res.json(questsWithTags);
   } catch (error) {
     console.error("Error fetching quests:", error);
     console.error("Error stack:", error.stack);

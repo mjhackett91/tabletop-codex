@@ -31,6 +31,8 @@ import {
   RadioGroup,
   FormControlLabel,
   Radio,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -42,6 +44,8 @@ import apiClient from "../services/apiClient";
 import RichTextEditor from "../components/RichTextEditor";
 import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
+import ImageGallery from "../components/ImageGallery";
+import TagSelector from "../components/TagSelector";
 
 const ALIGNMENTS = [
   "Lawful Good", "Neutral Good", "Chaotic Good",
@@ -57,6 +61,7 @@ export default function Factions() {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingFaction, setEditingFaction] = useState(null);
+  const [dialogTab, setDialogTab] = useState(0);
   const [formData, setFormData] = useState({ 
     name: "", 
     description: "", 
@@ -65,6 +70,8 @@ export default function Factions() {
     visibility: "dm-only"
   });
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+  const [selectedTagIds, setSelectedTagIds] = useState([]);
+  const [userRole, setUserRole] = useState(null);
 
   // Fetch factions
   const fetchFactions = async () => {
@@ -90,8 +97,19 @@ export default function Factions() {
     }
   };
 
+  // Fetch user role
+  const fetchUserRole = async () => {
+    try {
+      const roleData = await apiClient.get(`/api/campaigns/${campaignId}/my-role`);
+      setUserRole(roleData?.role || null);
+    } catch (error) {
+      console.error("Failed to fetch user role:", error);
+    }
+  };
+
   useEffect(() => {
     fetchFactions();
+    fetchUserRole();
   }, [campaignId]);
 
   // Check for navigation state to auto-open entity dialog
@@ -116,7 +134,18 @@ export default function Factions() {
     }
   }, [location.state, factions]);
 
-  const handleOpenDialog = (faction = null) => {
+  // Fetch tags for a faction
+  const fetchFactionTags = async (factionId) => {
+    try {
+      const tags = await apiClient.get(`/api/campaigns/${campaignId}/entities/faction/${factionId}/tags`);
+      setSelectedTagIds(tags.map(tag => tag.id));
+    } catch (error) {
+      console.error("Failed to fetch faction tags:", error);
+      setSelectedTagIds([]);
+    }
+  };
+
+  const handleOpenDialog = async (faction = null) => {
     if (faction) {
       setEditingFaction(faction);
       setFormData({
@@ -126,6 +155,7 @@ export default function Factions() {
         goals: faction.goals || "",
         visibility: faction.visibility || "dm-only"
       });
+      await fetchFactionTags(faction.id);
     } else {
       setEditingFaction(null);
       setFormData({
@@ -135,13 +165,17 @@ export default function Factions() {
         goals: "",
         visibility: "dm-only"
       });
+      setSelectedTagIds([]);
     }
+    setDialogTab(0);
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingFaction(null);
+    setDialogTab(0);
+    setSelectedTagIds([]);
     setFormData({ name: "", description: "", alignment: "", goals: "", visibility: "dm-only" });
   };
 
@@ -164,20 +198,35 @@ export default function Factions() {
         visibility: formData.visibility
       };
 
+      let factionId;
       if (editingFaction) {
         await apiClient.put(`/api/campaigns/${campaignId}/factions/${editingFaction.id}`, payload);
+        factionId = editingFaction.id;
         setSnackbar({
           open: true,
           message: "Faction updated successfully",
           severity: "success"
         });
       } else {
-        await apiClient.post(`/api/campaigns/${campaignId}/factions`, payload);
+        const result = await apiClient.post(`/api/campaigns/${campaignId}/factions`, payload);
+        factionId = result.id;
         setSnackbar({
           open: true,
           message: "Faction created successfully",
           severity: "success"
         });
+      }
+
+      // Update tags
+      if (factionId) {
+        try {
+          await apiClient.post(
+            `/api/campaigns/${campaignId}/entities/faction/${factionId}/tags`,
+            { tagIds: selectedTagIds }
+          );
+        } catch (error) {
+          console.error("Failed to update faction tags:", error);
+        }
       }
 
       handleCloseDialog();
@@ -305,6 +354,7 @@ export default function Factions() {
             <TableRow>
               <TableCell>Name</TableCell>
               <TableCell>Alignment</TableCell>
+              <TableCell>Tags</TableCell>
               <TableCell>Description</TableCell>
               <TableCell>Goals</TableCell>
               <TableCell>Created</TableCell>
@@ -314,13 +364,13 @@ export default function Factions() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">Loading factions...</Typography>
                 </TableCell>
               </TableRow>
             ) : factions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     No factions yet. Create your first faction!
                   </Typography>
@@ -350,19 +400,54 @@ export default function Factions() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Box
-                      sx={{ 
-                        maxWidth: 250, 
-                        overflow: "hidden", 
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        "& p": { margin: 0, display: "inline" },
-                        "& *": { display: "inline" }
-                      }}
-                      dangerouslySetInnerHTML={{ 
-                        __html: faction.description || "<span style='color: #bdbdbd'>No description</span>" 
-                      }}
-                    />
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                      {faction.tags && faction.tags.length > 0 ? (
+                        faction.tags.map((tag) => (
+                          <Chip
+                            key={tag.id}
+                            label={tag.name}
+                            size="small"
+                            sx={{
+                              bgcolor: tag.color || "#757575",
+                              color: "white",
+                              fontSize: "0.7rem",
+                              height: 20
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <Typography color="text.secondary" variant="caption">—</Typography>
+                      )}
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      // Check if description has actual content (not just empty HTML tags)
+                      const hasContent = faction.description && 
+                        faction.description.trim() && 
+                        faction.description.replace(/<[^>]*>/g, '').trim().length > 0;
+                      
+                      if (hasContent) {
+                        return (
+                          <Box
+                            sx={{ 
+                              maxWidth: 250, 
+                              overflow: "hidden", 
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              "& p": { margin: 0, display: "inline" },
+                              "& *": { display: "inline" }
+                            }}
+                            dangerouslySetInnerHTML={{ __html: faction.description }}
+                          />
+                        );
+                      }
+                      return (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
+                          No description
+                        </Typography>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     <Typography 
@@ -443,6 +528,12 @@ export default function Factions() {
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
+          <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ mb: 2 }}>
+            <Tab label="Details" />
+            <Tab label="Images" disabled={!editingFaction?.id} />
+          </Tabs>
+
+          {dialogTab === 0 && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
             <TextField
               autoFocus
@@ -493,6 +584,20 @@ export default function Factions() {
             />
 
             <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Tags
+              </Typography>
+              <TagSelector
+                campaignId={campaignId}
+                selectedTagIds={selectedTagIds}
+                onChange={setSelectedTagIds}
+                entityType="faction"
+                entityId={editingFaction?.id}
+                userRole={userRole}
+              />
+            </Box>
+
+            <Box>
               <FormControl component="fieldset">
                 <FormLabel component="legend">Visibility</FormLabel>
                 <RadioGroup
@@ -524,6 +629,18 @@ export default function Factions() {
               </FormControl>
             </Box>
           </Box>
+          )}
+
+          {dialogTab === 1 && editingFaction?.id && (
+            <Box sx={{ pt: 2 }}>
+              <ImageGallery
+                campaignId={campaignId}
+                entityType="faction"
+                entityId={editingFaction.id}
+                onUpdate={fetchFactions}
+              />
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>

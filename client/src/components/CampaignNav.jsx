@@ -9,6 +9,7 @@ import GroupsIcon from "@mui/icons-material/Groups";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import EventIcon from "@mui/icons-material/Event";
 import AssignmentIcon from "@mui/icons-material/Assignment";
+import PetsIcon from "@mui/icons-material/Pets";
 
 function LinkTab(props) {
   return (
@@ -44,6 +45,8 @@ export default function CampaignNav({ campaignId }) {
     currentTab = "/sessions";
   } else if (location.pathname.includes("/quests")) {
     currentTab = "/quests";
+  } else if (location.pathname.includes("/creatures")) {
+    currentTab = "/creatures";
   } else if (location.pathname.includes("/characters")) {
     currentTab = "/characters";
   }
@@ -82,6 +85,13 @@ export default function CampaignNav({ campaignId }) {
           value="/antagonists"
           to={`${basePath}/antagonists`}
           icon={<DangerousIcon />}
+          iconPosition="start"
+        />
+        <LinkTab
+          label="Creatures"
+          value="/creatures"
+          to={`${basePath}/creatures`}
+          icon={<PetsIcon />}
           iconPosition="start"
         />
         <LinkTab

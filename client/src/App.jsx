@@ -14,6 +14,7 @@ import Factions from "./pages/Factions";
 import WorldInfo from "./pages/WorldInfo";
 import Sessions from "./pages/Sessions";
 import Quests from "./pages/Quests";
+import Creatures from "./pages/Creatures";
 import NotFound from "./pages/NotFound";
 
 // Protected Route component
@@ -101,6 +102,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Quests />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/campaigns/:id/creatures"
+              element={
+                <ProtectedRoute>
+                  <Creatures />
                 </ProtectedRoute>
               }
             />

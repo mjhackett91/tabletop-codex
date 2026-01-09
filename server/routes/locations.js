@@ -76,27 +76,37 @@ router.get("/:campaignId/locations", requireCampaignAccess, (req, res) => {
     const locations = db.prepare(query).all(...params);
     console.log("Locations found:", locations.length);
 
-    // Get parent location name for each location if it exists
+    // Get parent location name and tags for each location
     const locationsWithParents = locations.map(location => {
       try {
+        let parent_location_name = null;
         if (location.parent_location_id) {
           const parent = db
             .prepare("SELECT name FROM locations WHERE id = ?")
             .get(location.parent_location_id);
-          return {
-            ...location,
-            parent_location_name: parent?.name || null
-          };
+          parent_location_name = parent?.name || null;
         }
+
+        // Get tags for this location
+        const tags = db.prepare(`
+          SELECT t.*
+          FROM tags t
+          INNER JOIN entity_tags et ON t.id = et.tag_id
+          WHERE et.entity_type = 'location' AND et.entity_id = ? AND t.campaign_id = ?
+          ORDER BY t.name ASC
+        `).all(location.id, campaignId);
+
         return {
           ...location,
-          parent_location_name: null
+          parent_location_name,
+          tags
         };
       } catch (err) {
         console.error("Error processing location:", location.id, err);
         return {
           ...location,
-          parent_location_name: null
+          parent_location_name: null,
+          tags: []
         };
       }
     });
@@ -151,9 +161,19 @@ router.get("/:campaignId/locations/:id", requireCampaignAccess, (req, res) => {
       parent_location_name = parent?.name || null;
     }
 
+    // Get tags for this location
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'location' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(location.id, campaignId);
+
     res.json({
       ...location,
-      parent_location_name
+      parent_location_name,
+      tags
     });
   } catch (error) {
     console.error("Error fetching location:", error);
@@ -220,9 +240,19 @@ router.post("/:campaignId/locations", requireCampaignDM, (req, res) => {
       parent_location_name = parent?.name || null;
     }
 
+    // Get tags for this location
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'location' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(newLocation.id, campaignId);
+
     res.status(201).json({
       ...newLocation,
-      parent_location_name
+      parent_location_name,
+      tags
     });
   } catch (error) {
     console.error("Error creating location:", error);
@@ -305,9 +335,19 @@ router.put("/:campaignId/locations/:id", requireCampaignDM, (req, res) => {
       parent_location_name = parent?.name || null;
     }
 
+    // Get tags for this location
+    const tags = db.prepare(`
+      SELECT t.*
+      FROM tags t
+      INNER JOIN entity_tags et ON t.id = et.tag_id
+      WHERE et.entity_type = 'location' AND et.entity_id = ? AND t.campaign_id = ?
+      ORDER BY t.name ASC
+    `).all(id, campaignId);
+
     res.json({
       ...updatedLocation,
-      parent_location_name
+      parent_location_name,
+      tags
     });
   } catch (error) {
     console.error("Error updating location:", error);

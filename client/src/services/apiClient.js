@@ -92,7 +92,50 @@ async function apiRequest(endpoint, options = {}) {
 
 export const apiClient = {
   get: (endpoint) => apiRequest(endpoint, { method: "GET" }),
-  post: (endpoint, data) => apiRequest(endpoint, { method: "POST", body: JSON.stringify(data) }),
+  post: (endpoint, data) => {
+    // If data is FormData, don't stringify and don't set Content-Type
+    if (data instanceof FormData) {
+      const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+      const url = endpoint.startsWith("http") 
+        ? endpoint 
+        : isDev 
+          ? cleanEndpoint 
+          : `${baseURL}${cleanEndpoint}`;
+      
+      const token = localStorage.getItem("token");
+      const headers = {};
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      
+      // Add dev role header if in dev mode
+      if (import.meta.env.DEV) {
+        const campaignMatch = endpoint.match(/\/campaigns\/(\d+)/);
+        if (campaignMatch) {
+          const campaignId = campaignMatch[1];
+          const devRoleKey = `ttc_dev_campaign_role_${campaignId}`;
+          const simulatedRole = localStorage.getItem(devRoleKey);
+          if (simulatedRole) {
+            headers["X-Dev-Simulated-Role"] = simulatedRole;
+            headers["X-Dev-Campaign-Id"] = campaignId;
+          }
+        }
+      }
+      
+      return fetch(url, {
+        method: "POST",
+        headers,
+        body: data
+      }).then(async (response) => {
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: response.statusText }));
+          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+      });
+    }
+    return apiRequest(endpoint, { method: "POST", body: JSON.stringify(data) });
+  },
   put: (endpoint, data) => apiRequest(endpoint, { method: "PUT", body: JSON.stringify(data) }),
   delete: (endpoint) => apiRequest(endpoint, { method: "DELETE" }),
 };
