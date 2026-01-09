@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -205,6 +205,15 @@ export default function Campaigns() {
                     </Typography>
                   </TableCell>
                   <TableCell align="right">
+                    <Button
+                      component={Link}
+                      to={`/campaigns/${campaign.id}/characters`}
+                      size="small"
+                      variant="outlined"
+                      sx={{ mr: 1 }}
+                    >
+                      Manage
+                    </Button>
                     <IconButton
                       onClick={() => handleOpenDialog(campaign)}
                       color="primary"

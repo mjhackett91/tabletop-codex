@@ -19,18 +19,29 @@ export function verifyCampaignOwnership(campaignId, userId) {
  * Middleware to check campaign ownership
  */
 export function requireCampaignOwnership(req, res, next) {
-  const { campaignId } = req.params;
-  const userId = req.user?.id;
+  try {
+    const { campaignId } = req.params;
+    const userId = req.user?.id;
 
-  if (!userId) {
-    return res.status(401).json({ error: "Authentication required" });
+    console.log("requireCampaignOwnership - campaignId:", campaignId, "userId:", userId);
+
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    if (!campaignId) {
+      return res.status(400).json({ error: "Campaign ID is required" });
+    }
+
+    if (!verifyCampaignOwnership(campaignId, userId)) {
+      return res.status(403).json({ error: "Campaign not found or access denied" });
+    }
+
+    next();
+  } catch (error) {
+    console.error("Error in requireCampaignOwnership:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
-
-  if (!verifyCampaignOwnership(campaignId, userId)) {
-    return res.status(403).json({ error: "Campaign not found or access denied" });
-  }
-
-  next();
 }
 
 export default verifyCampaignOwnership;

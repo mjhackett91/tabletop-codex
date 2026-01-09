@@ -1,80 +1,37 @@
-import { AppBar, Toolbar, Typography, Container, Button, Box } from "@mui/material";
-import { Link, useLocation } from "react-router-dom";
+// client/src/components/Layout.jsx - Main layout wrapper
+import { Box, Container } from "@mui/material";
+import { useLocation } from "react-router-dom";
+import TopAppBar from "./TopAppBar";
+import Breadcrumbs from "./Breadcrumbs";
 
 export default function Layout({ children }) {
   const location = useLocation();
+  
+  // Public pages (no top bar, no breadcrumbs)
+  const publicPages = ["/", "/login", "/register"];
+  const isPublicPage = publicPages.includes(location.pathname);
+  
+  // Check if user is logged in
+  const isLoggedIn = !!localStorage.getItem("token");
 
   return (
-    <>
-      <AppBar position="static" color="transparent" elevation={0}>
-        <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1, color: "primary.main" }}>
-            Table Top Codex
-          </Typography>
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Button
-              component={Link}
-              to="/"
-              color="inherit"
-              sx={{ 
-                color: location.pathname === "/" ? "primary.main" : "text.secondary",
-                fontWeight: location.pathname === "/" ? 600 : 400
-              }}
-            >
-              Home
-            </Button>
-            <Button
-              component={Link}
-              to="/campaigns"
-              color="inherit"
-              sx={{ 
-                color: location.pathname === "/campaigns" ? "primary.main" : "text.secondary",
-                fontWeight: location.pathname === "/campaigns" ? 600 : 400
-              }}
-            >
-              Campaigns
-            </Button>
-            {localStorage.getItem("token") ? (
-              <Button
-                onClick={() => {
-                  localStorage.removeItem("token");
-                  localStorage.removeItem("user");
-                  window.location.href = "/login";
-                }}
-                color="inherit"
-                sx={{ color: "text.secondary" }}
-              >
-                Logout
-              </Button>
-            ) : (
-              <>
-                <Button
-                  component={Link}
-                  to="/login"
-                  color="inherit"
-                  sx={{ 
-                    color: location.pathname === "/login" ? "primary.main" : "text.secondary"
-                  }}
-                >
-                  Login
-                </Button>
-                <Button
-                  component={Link}
-                  to="/register"
-                  variant="outlined"
-                  color="primary"
-                  sx={{ 
-                    color: location.pathname === "/register" ? "primary.main" : "primary.main"
-                  }}
-                >
-                  Register
-                </Button>
-              </>
-            )}
-          </Box>
-        </Toolbar>
-      </AppBar>
-      <Container sx={{ mt: 4 }}>{children}</Container>
-    </>
+    <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      {/* Show TopAppBar only for logged-in users on non-public pages */}
+      {isLoggedIn && !isPublicPage && <TopAppBar />}
+      
+      {/* Main content */}
+      <Box sx={{ flexGrow: 1 }}>
+        {isPublicPage ? (
+          // Full-width for hero page
+          children
+        ) : (
+          // Container with breadcrumbs for app pages
+          <Container maxWidth="xl" sx={{ py: 3 }}>
+            <Breadcrumbs />
+            {children}
+          </Container>
+        )}
+      </Box>
+    </Box>
   );
 }

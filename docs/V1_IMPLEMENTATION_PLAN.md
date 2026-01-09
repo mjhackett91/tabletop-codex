@@ -239,13 +239,22 @@ Example in rich text:
 - Quick access to all content types
 - Recent activity feed
 
-### Content Type Pages (Characters, Locations, Factions, World Info)
-- List view with filters (tags, search)
+### Content Type Pages
+**Separate Pages for Each Type:**
+- **Characters** (Player Characters) - `/campaigns/:id/characters`
+- **NPCs** - `/campaigns/:id/npcs`
+- **Antagonists** (Big Bads) - `/campaigns/:id/antagonists`
+- **Locations** - `/campaigns/:id/locations`
+- **Factions** - `/campaigns/:id/factions`
+- **World Info** - `/campaigns/:id/world-info`
+
+Each page includes:
+- List view with search
 - Grid/card view option
 - Create button
-- Individual detail/edit pages with:
-  - Rich text editor (React-Quill)
-  - Character sheet editor (for characters)
+- Individual detail/edit dialogs/pages with:
+  - Rich text editor (TipTap)
+  - Character sheet editor (for characters/NPCs/antagonists)
   - Image gallery
   - Tags editor
   - Related entities (wiki links)

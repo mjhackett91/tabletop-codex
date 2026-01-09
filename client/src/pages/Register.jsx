@@ -38,9 +38,9 @@ export default function Register() {
       if (response.token) {
         localStorage.setItem("token", response.token);
         localStorage.setItem("user", JSON.stringify(response.user));
-        console.log("Token stored, redirecting to campaigns...");
-        // Redirect to campaigns
-        navigate("/campaigns");
+        console.log("Token stored, redirecting to dashboard...");
+        // Redirect to dashboard
+        navigate("/dashboard");
       } else {
         throw new Error("No token received from server");
       }

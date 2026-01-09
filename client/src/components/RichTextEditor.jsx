@@ -1,4 +1,5 @@
 // client/src/components/RichTextEditor.jsx
+import { useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Box, IconButton, Paper } from "@mui/material";
@@ -28,6 +29,13 @@ const RichTextEditor = ({ value, onChange, placeholder = "Enter text..." }) => {
       },
     },
   });
+
+  // Update editor content when value prop changes externally
+  useEffect(() => {
+    if (editor && value !== undefined && editor.getHTML() !== value) {
+      editor.commands.setContent(value || "");
+    }
+  }, [value, editor]);
 
   if (!editor) {
     return null;

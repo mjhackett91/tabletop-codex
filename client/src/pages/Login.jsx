@@ -21,8 +21,8 @@ export default function Login() {
       localStorage.setItem("token", response.token);
       localStorage.setItem("user", JSON.stringify(response.user));
       
-      // Redirect to campaigns
-      navigate("/campaigns");
+      // Redirect to dashboard
+      navigate("/dashboard");
     } catch (err) {
       setError(err.message || "Login failed");
     } finally {

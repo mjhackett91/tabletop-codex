@@ -40,8 +40,15 @@ async function apiRequest(endpoint, options = {}) {
     const response = await fetch(url, config);
     
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: response.statusText }));
-      const errorMessage = error.error || `HTTP ${response.status}: ${response.statusText}`;
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { error: response.statusText };
+      }
+      
+      const errorMessage = errorData.error || errorData.details || `HTTP ${response.status}: ${response.statusText}`;
+      const fullError = errorData.details ? `${errorMessage} (${errorData.details})` : errorMessage;
       
       // Enhance error messages for common auth errors
       if (response.status === 401) {
@@ -49,7 +56,7 @@ async function apiRequest(endpoint, options = {}) {
       } else if (response.status === 403) {
         throw new Error("Access denied. Invalid or expired token.");
       } else {
-        throw new Error(errorMessage);
+        throw new Error(fullError);
       }
     }
 

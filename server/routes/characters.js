@@ -1,4 +1,4 @@
-// server/routes/characters.js - Characters API (Player, NPCs, Big Bads)
+// server/routes/characters.js - Characters API (Player Characters, NPCs, Antagonists)
 import express from "express";
 import db from "../db.js";
 import { authenticateToken } from "../middleware/auth.js";
@@ -6,12 +6,28 @@ import { requireCampaignOwnership } from "../utils/campaignOwnership.js";
 
 const router = express.Router({ mergeParams: true });
 
-// All character routes require authentication and campaign ownership
+// All character routes require authentication
 router.use(authenticateToken);
-router.use("/:campaignId", requireCampaignOwnership);
+
+// Middleware helper to check campaign ownership
+const checkOwnership = (req, res, next) => {
+  const campaignId = req.params.campaignId;
+  const userId = req.user?.id;
+  
+  if (!campaignId || !userId) {
+    return res.status(400).json({ error: "Invalid request" });
+  }
+  
+  const campaign = db.prepare("SELECT id FROM campaigns WHERE id = ? AND user_id = ?").get(campaignId, userId);
+  if (!campaign) {
+    return res.status(403).json({ error: "Campaign not found or access denied" });
+  }
+  
+  next();
+};
 
 // GET /api/campaigns/:campaignId/characters
-router.get("/:campaignId/characters", (req, res) => {
+router.get("/:campaignId/characters", checkOwnership, (req, res) => {
   try {
     const { campaignId } = req.params;
     const { type, search } = req.query;
@@ -45,7 +61,7 @@ router.get("/:campaignId/characters", (req, res) => {
 });
 
 // GET /api/campaigns/:campaignId/characters/:id
-router.get("/:campaignId/characters/:id", (req, res) => {
+router.get("/:campaignId/characters/:id", checkOwnership, (req, res) => {
   try {
     const { campaignId, id } = req.params;
 
@@ -68,13 +84,13 @@ router.get("/:campaignId/characters/:id", (req, res) => {
 });
 
 // POST /api/campaigns/:campaignId/characters
-router.post("/:campaignId/characters", (req, res) => {
+router.post("/:campaignId/characters", checkOwnership, (req, res) => {
   try {
     const { campaignId } = req.params;
     const { type, name, description, character_sheet, alignment } = req.body;
 
-    if (!type || !["player", "npc", "big_bad"].includes(type)) {
-      return res.status(400).json({ error: "Valid type required (player, npc, big_bad)" });
+    if (!type || !["player", "npc", "antagonist"].includes(type)) {
+      return res.status(400).json({ error: "Valid type required (player, npc, antagonist)" });
     }
 
     if (!name || !name.trim()) {
@@ -111,7 +127,7 @@ router.post("/:campaignId/characters", (req, res) => {
 });
 
 // PUT /api/campaigns/:campaignId/characters/:id
-router.put("/:campaignId/characters/:id", (req, res) => {
+router.put("/:campaignId/characters/:id", checkOwnership, (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const { type, name, description, character_sheet, alignment } = req.body;
@@ -156,7 +172,7 @@ router.put("/:campaignId/characters/:id", (req, res) => {
 });
 
 // DELETE /api/campaigns/:campaignId/characters/:id
-router.delete("/:campaignId/characters/:id", (req, res) => {
+router.delete("/:campaignId/characters/:id", checkOwnership, (req, res) => {
   try {
     const { campaignId, id } = req.params;
 
