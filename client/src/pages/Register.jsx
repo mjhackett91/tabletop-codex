@@ -18,8 +18,29 @@ export default function Register() {
       return;
     }
 
-    if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters");
+    // Strengthen password requirements to match backend
+    if (formData.password.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
+    
+    // Check for basic password complexity (at least one letter and one number)
+    if (!/[a-zA-Z]/.test(formData.password) || !/[0-9]/.test(formData.password)) {
+      setError("Password must contain at least one letter and one number");
+      return;
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError("Invalid email format");
+      return;
+    }
+    
+    // Sanitize username (alphanumeric, underscore, hyphen, 3-20 chars)
+    const usernameRegex = /^[a-zA-Z0-9_-]{3,20}$/;
+    if (!usernameRegex.test(formData.username)) {
+      setError("Username must be 3-20 characters and contain only letters, numbers, underscores, and hyphens");
       return;
     }
 
@@ -102,7 +123,7 @@ export default function Register() {
             value={formData.password}
             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
             required
-            helperText="At least 6 characters"
+            helperText="At least 8 characters, must contain letters and numbers"
           />
           <TextField
             fullWidth

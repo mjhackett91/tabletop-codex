@@ -1,6 +1,6 @@
 // server/routes/factions.js - Factions API
 import express from "express";
-import db from "../db.js";
+import { get, all, query } from "../db-pg.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { requireCampaignAccess, requireCampaignDM } from "../middleware/participantAccess.js";
 
@@ -18,7 +18,7 @@ router.use((req, res, next) => {
 });
 
 // GET /api/campaigns/:campaignId/factions
-router.get("/:campaignId/factions", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/factions", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { search } = req.query;
@@ -28,47 +28,49 @@ router.get("/:campaignId/factions", requireCampaignAccess, (req, res) => {
       return res.status(400).json({ error: "Campaign ID is required" });
     }
 
-    let query = `
+    let queryText = `
       SELECT f.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM factions f
       LEFT JOIN users creator ON f.created_by_user_id = creator.id
       LEFT JOIN users updater ON f.last_updated_by_user_id = updater.id
-      WHERE f.campaign_id = ?
+      WHERE f.campaign_id = $1
     `;
     const params = [campaignId];
+    let paramIndex = 2;
 
     // Filter by visibility: players only see player-visible, DMs see all except hidden
     if (userRole === "player") {
-      query += " AND f.visibility = 'player-visible'";
+      queryText += " AND f.visibility = 'player-visible'";
     } else if (userRole === "dm") {
-      query += " AND f.visibility != 'hidden'";
+      queryText += " AND f.visibility != 'hidden'";
     } else {
       return res.status(403).json({ error: "Access denied" });
     }
 
     if (search) {
-      query += " AND (f.name LIKE ? OR f.description LIKE ? OR f.goals LIKE ?)";
+      queryText += ` AND (f.name LIKE $${paramIndex} OR f.description LIKE $${paramIndex + 1} OR f.goals LIKE $${paramIndex + 2})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm, searchTerm);
+      paramIndex += 3;
     }
 
-    query += " ORDER BY f.name";
+    queryText += " ORDER BY f.name";
 
-    const factions = db.prepare(query).all(...params);
+    const factions = await all(queryText, params);
 
     // Get tags for each faction
-    const factionsWithTags = factions.map(faction => {
+    const factionsWithTags = await Promise.all(factions.map(async (faction) => {
       try {
         // Get tags for this faction
-        const tags = db.prepare(`
+        const tags = await all(`
           SELECT t.*
           FROM tags t
           INNER JOIN entity_tags et ON t.id = et.tag_id
-          WHERE et.entity_type = 'faction' AND et.entity_id = ? AND t.campaign_id = ?
+          WHERE et.entity_type = 'faction' AND et.entity_id = $1 AND t.campaign_id = $2
           ORDER BY t.name ASC
-        `).all(faction.id, campaignId);
+        `, [faction.id, campaignId]);
 
         return {
           ...faction,
@@ -81,7 +83,7 @@ router.get("/:campaignId/factions", requireCampaignAccess, (req, res) => {
           tags: []
         };
       }
-    });
+    }));
 
     res.json(factionsWithTags);
   } catch (error) {
@@ -92,45 +94,46 @@ router.get("/:campaignId/factions", requireCampaignAccess, (req, res) => {
 });
 
 // GET /api/campaigns/:campaignId/factions/:id
-router.get("/:campaignId/factions/:id", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/factions/:id", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const userRole = req.userCampaignRole;
 
-    let query = `
+    let queryText = `
       SELECT f.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM factions f
       LEFT JOIN users creator ON f.created_by_user_id = creator.id
       LEFT JOIN users updater ON f.last_updated_by_user_id = updater.id
-      WHERE f.id = ? AND f.campaign_id = ?
+      WHERE f.id = $1 AND f.campaign_id = $2
     `;
     const params = [id, campaignId];
+    let paramIndex = 3;
 
     // Filter by visibility
     if (userRole === "player") {
-      query += " AND f.visibility = 'player-visible'";
+      queryText += " AND f.visibility = 'player-visible'";
     } else if (userRole === "dm") {
-      query += " AND f.visibility != 'hidden'";
+      queryText += " AND f.visibility != 'hidden'";
     } else {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const faction = db.prepare(query).get(...params);
+    const faction = await get(queryText, params);
 
     if (!faction) {
       return res.status(404).json({ error: "Faction not found" });
     }
 
     // Get tags for this faction
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'faction' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'faction' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(faction.id, campaignId);
+    `, [faction.id, campaignId]);
 
     res.json({
       ...faction,
@@ -143,7 +146,7 @@ router.get("/:campaignId/factions/:id", requireCampaignAccess, (req, res) => {
 });
 
 // POST /api/campaigns/:campaignId/factions
-router.post("/:campaignId/factions", requireCampaignDM, (req, res) => {
+router.post("/:campaignId/factions", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { name, description, alignment, goals, visibility } = req.body;
@@ -153,12 +156,11 @@ router.post("/:campaignId/factions", requireCampaignDM, (req, res) => {
       return res.status(400).json({ error: "Faction name is required" });
     }
 
-    const result = db
-      .prepare(
-        `INSERT INTO factions (campaign_id, name, description, alignment, goals, visibility, created_by_user_id, last_updated_by_user_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
+    const result = await query(
+      `INSERT INTO factions (campaign_id, name, description, alignment, goals, visibility, created_by_user_id, last_updated_by_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
+      [
         campaignId,
         name.trim(),
         description || null,
@@ -167,28 +169,29 @@ router.post("/:campaignId/factions", requireCampaignDM, (req, res) => {
         visibility || "dm-only",
         userId, // created_by_user_id
         userId  // last_updated_by_user_id
-      );
+      ]
+    );
 
-    const newFaction = db
-      .prepare(`
-        SELECT f.*, 
-               creator.username as created_by_username, creator.email as created_by_email,
-               updater.username as last_updated_by_username, updater.email as last_updated_by_email
-        FROM factions f
-        LEFT JOIN users creator ON f.created_by_user_id = creator.id
-        LEFT JOIN users updater ON f.last_updated_by_user_id = updater.id
-        WHERE f.id = ?
-      `)
-      .get(result.lastInsertRowid);
+    const factionId = result.rows[0].id;
+
+    const newFaction = await get(`
+      SELECT f.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM factions f
+      LEFT JOIN users creator ON f.created_by_user_id = creator.id
+      LEFT JOIN users updater ON f.last_updated_by_user_id = updater.id
+      WHERE f.id = $1
+    `, [factionId]);
 
     // Get tags for this faction
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'faction' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'faction' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(newFaction.id, campaignId);
+    `, [factionId, campaignId]);
 
     res.status(201).json({
       ...newFaction,
@@ -201,7 +204,7 @@ router.post("/:campaignId/factions", requireCampaignDM, (req, res) => {
 });
 
 // PUT /api/campaigns/:campaignId/factions/:id
-router.put("/:campaignId/factions/:id", requireCampaignDM, (req, res) => {
+router.put("/:campaignId/factions/:id", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const { name, description, alignment, goals, visibility } = req.body;
@@ -211,9 +214,7 @@ router.put("/:campaignId/factions/:id", requireCampaignDM, (req, res) => {
     }
 
     // Check if faction exists and belongs to campaign
-    const existing = db
-      .prepare("SELECT id FROM factions WHERE id = ? AND campaign_id = ?")
-      .get(id, campaignId);
+    const existing = await get("SELECT id FROM factions WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
 
     if (!existing) {
       return res.status(404).json({ error: "Faction not found" });
@@ -221,41 +222,40 @@ router.put("/:campaignId/factions/:id", requireCampaignDM, (req, res) => {
 
     const userId = req.user.id;
 
-    db.prepare(
+    await query(
       `UPDATE factions 
-       SET name = ?, description = ?, alignment = ?, goals = ?, visibility = ?, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = ?
-       WHERE id = ? AND campaign_id = ?`
-    ).run(
-      name.trim(),
-      description || null,
-      alignment || null,
-      goals || null,
-      visibility || "dm-only",
-      userId, // last_updated_by_user_id
-      id,
-      campaignId
+       SET name = $1, description = $2, alignment = $3, goals = $4, visibility = $5, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = $6
+       WHERE id = $7 AND campaign_id = $8`,
+      [
+        name.trim(),
+        description || null,
+        alignment || null,
+        goals || null,
+        visibility || "dm-only",
+        userId, // last_updated_by_user_id
+        id,
+        campaignId
+      ]
     );
 
-    const updatedFaction = db
-      .prepare(`
-        SELECT f.*, 
-               creator.username as created_by_username, creator.email as created_by_email,
-               updater.username as last_updated_by_username, updater.email as last_updated_by_email
-        FROM factions f
-        LEFT JOIN users creator ON f.created_by_user_id = creator.id
-        LEFT JOIN users updater ON f.last_updated_by_user_id = updater.id
-        WHERE f.id = ?
-      `)
-      .get(id);
+    const updatedFaction = await get(`
+      SELECT f.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM factions f
+      LEFT JOIN users creator ON f.created_by_user_id = creator.id
+      LEFT JOIN users updater ON f.last_updated_by_user_id = updater.id
+      WHERE f.id = $1
+    `, [id]);
 
     // Get tags for this faction
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'faction' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'faction' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(id, campaignId);
+    `, [id, campaignId]);
 
     res.json({
       ...updatedFaction,
@@ -268,20 +268,22 @@ router.put("/:campaignId/factions/:id", requireCampaignDM, (req, res) => {
 });
 
 // DELETE /api/campaigns/:campaignId/factions/:id
-router.delete("/:campaignId/factions/:id", requireCampaignDM, (req, res) => {
+router.delete("/:campaignId/factions/:id", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
 
     // Check if faction exists and belongs to campaign
-    const faction = db
-      .prepare("SELECT id FROM factions WHERE id = ? AND campaign_id = ?")
-      .get(id, campaignId);
+    const faction = await get("SELECT id FROM factions WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
 
     if (!faction) {
       return res.status(404).json({ error: "Faction not found" });
     }
 
-    db.prepare("DELETE FROM factions WHERE id = ? AND campaign_id = ?").run(id, campaignId);
+    const result = await query("DELETE FROM factions WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Faction not found" });
+    }
 
     res.json({ message: "Faction deleted successfully" });
   } catch (error) {

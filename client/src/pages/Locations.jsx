@@ -47,6 +47,7 @@ import RichTextEditor from "../components/RichTextEditor";
 import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
 import ImageGallery from "../components/ImageGallery";
+import { sanitizeHTML } from "../utils/sanitize.js";
 import TagSelector from "../components/TagSelector";
 
 const LOCATION_TYPES = [
@@ -472,7 +473,7 @@ export default function Locations() {
                               "& p": { margin: 0, display: "inline" },
                               "& *": { display: "inline" }
                             }}
-                            dangerouslySetInnerHTML={{ __html: location.description }}
+                            dangerouslySetInnerHTML={{ __html: sanitizeHTML(location.description || "") }}
                           />
                         );
                       }
@@ -550,7 +551,7 @@ export default function Locations() {
         <DialogContent dividers>
           <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ mb: 2 }}>
             <Tab label="Details" />
-            <Tab label="Images" disabled={!editingLocation?.id} />
+            <Tab label="Images" />
           </Tabs>
 
           {dialogTab === 0 && (
@@ -656,14 +657,22 @@ export default function Locations() {
           </Box>
           )}
 
-          {dialogTab === 1 && editingLocation?.id && (
+          {dialogTab === 1 && (
             <Box sx={{ pt: 2 }}>
-              <ImageGallery
-                campaignId={campaignId}
-                entityType="location"
-                entityId={editingLocation.id}
-                onUpdate={fetchLocations}
-              />
+              {editingLocation?.id ? (
+                <ImageGallery
+                  campaignId={campaignId}
+                  entityType="location"
+                  entityId={editingLocation.id}
+                  onUpdate={fetchLocations}
+                />
+              ) : (
+                <Box sx={{ textAlign: "center", py: 4 }}>
+                  <Typography color="text.secondary">
+                    Save the location first to upload images.
+                  </Typography>
+                </Box>
+              )}
             </Box>
           )}
         </DialogContent>

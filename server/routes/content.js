@@ -1,6 +1,6 @@
 // server/routes/content.js - Category-based content API
 import express from "express";
-import db from "../db.js";
+import { get, all, query } from "../db-pg.js";
 import { authenticateToken } from "../middleware/auth.js";
 
 const router = express.Router({ mergeParams: true });
@@ -9,7 +9,7 @@ const router = express.Router({ mergeParams: true });
 router.use(authenticateToken);
 
 // Helper to check ownership before route handlers
-const checkOwnership = (req, res, next) => {
+const checkOwnership = async (req, res, next) => {
   const campaignId = req.params.campaignId;
   const userId = req.user?.id;
   
@@ -17,7 +17,7 @@ const checkOwnership = (req, res, next) => {
     return res.status(400).json({ error: "Invalid request" });
   }
   
-  const campaign = db.prepare("SELECT id FROM campaigns WHERE id = ? AND user_id = ?").get(campaignId, userId);
+  const campaign = await get("SELECT id FROM campaigns WHERE id = $1 AND user_id = $2", [campaignId, userId]);
   if (!campaign) {
     return res.status(403).json({ error: "Campaign not found or access denied" });
   }
@@ -26,18 +26,16 @@ const checkOwnership = (req, res, next) => {
 };
 
 // GET /api/campaigns/:campaignId/content/:category
-router.get("/:campaignId/content/:category", checkOwnership, (req, res) => {
+router.get("/:campaignId/content/:category", checkOwnership, async (req, res) => {
   try {
     const { campaignId, category } = req.params;
     
-    const items = db
-      .prepare(`
-        SELECT id, title, content_data, created_at, updated_at 
-        FROM content_items 
-        WHERE campaign_id = ? AND category = ?
-        ORDER BY updated_at DESC
-      `)
-      .all(campaignId, category);
+    const items = await all(`
+      SELECT id, title, content_data, created_at, updated_at 
+      FROM content_items 
+      WHERE campaign_id = $1 AND category = $2
+      ORDER BY updated_at DESC
+    `, [campaignId, category]);
 
     res.json(items.map(item => ({
       ...item,
@@ -50,7 +48,7 @@ router.get("/:campaignId/content/:category", checkOwnership, (req, res) => {
 });
 
 // POST /api/campaigns/:campaignId/content/:category
-router.post("/:campaignId/content/:category", checkOwnership, (req, res) => {
+router.post("/:campaignId/content/:category", checkOwnership, async (req, res) => {
   try {
     const { campaignId, category } = req.params;
     const { title, content_data } = req.body;
@@ -61,13 +59,14 @@ router.post("/:campaignId/content/:category", checkOwnership, (req, res) => {
 
     const contentJson = content_data ? JSON.stringify(content_data) : null;
 
-    const stmt = db.prepare(`
+    const result = await query(`
       INSERT INTO content_items (campaign_id, category, title, content_data)
-      VALUES (?, ?, ?, ?)
-    `);
-    const result = stmt.run(campaignId, category, title.trim(), contentJson);
+      VALUES ($1, $2, $3, $4)
+      RETURNING id
+    `, [campaignId, category, title.trim(), contentJson]);
 
-    const newItem = db.prepare("SELECT * FROM content_items WHERE id = ?").get(result.lastInsertRowid);
+    const itemId = result.rows[0].id;
+    const newItem = await get("SELECT * FROM content_items WHERE id = $1", [itemId]);
     
     res.status(201).json({
       ...newItem,
@@ -80,7 +79,7 @@ router.post("/:campaignId/content/:category", checkOwnership, (req, res) => {
 });
 
 // PUT /api/campaigns/:campaignId/content/:category/:id
-router.put("/:campaignId/content/:category/:id", checkOwnership, (req, res) => {
+router.put("/:campaignId/content/:category/:id", checkOwnership, async (req, res) => {
   try {
     const { campaignId, category, id } = req.params;
     const { title, content_data } = req.body;
@@ -91,18 +90,17 @@ router.put("/:campaignId/content/:category/:id", checkOwnership, (req, res) => {
 
     const contentJson = content_data ? JSON.stringify(content_data) : null;
 
-    const stmt = db.prepare(`
+    const result = await query(`
       UPDATE content_items 
-      SET title = ?, content_data = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND campaign_id = ? AND category = ?
-    `);
-    const result = stmt.run(title.trim(), contentJson, id, campaignId, category);
+      SET title = $1, content_data = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3 AND campaign_id = $4 AND category = $5
+    `, [title.trim(), contentJson, id, campaignId, category]);
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Content not found" });
     }
 
-    const updated = db.prepare("SELECT * FROM content_items WHERE id = ?").get(id);
+    const updated = await get("SELECT * FROM content_items WHERE id = $1", [id]);
     res.json({
       ...updated,
       content_data: updated.content_data ? JSON.parse(updated.content_data) : null
@@ -114,17 +112,16 @@ router.put("/:campaignId/content/:category/:id", checkOwnership, (req, res) => {
 });
 
 // DELETE /api/campaigns/:campaignId/content/:category/:id
-router.delete("/:campaignId/content/:category/:id", checkOwnership, (req, res) => {
+router.delete("/:campaignId/content/:category/:id", checkOwnership, async (req, res) => {
   try {
     const { campaignId, category, id } = req.params;
 
-    const stmt = db.prepare(`
+    const result = await query(`
       DELETE FROM content_items 
-      WHERE id = ? AND campaign_id = ? AND category = ?
-    `);
-    const result = stmt.run(id, campaignId, category);
+      WHERE id = $1 AND campaign_id = $2 AND category = $3
+    `, [id, campaignId, category]);
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Content not found" });
     }
 

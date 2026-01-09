@@ -1,6 +1,6 @@
 // server/routes/worldInfo.js - World Info API
 import express from "express";
-import db from "../db.js";
+import { get, all, query } from "../db-pg.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { requireCampaignAccess, requireCampaignDM } from "../middleware/participantAccess.js";
 
@@ -10,7 +10,7 @@ const router = express.Router({ mergeParams: true });
 router.use(authenticateToken);
 
 // GET /api/campaigns/:campaignId/world-info
-router.get("/:campaignId/world-info", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/world-info", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { search, category } = req.query;
@@ -27,55 +27,58 @@ router.get("/:campaignId/world-info", requireCampaignAccess, (req, res) => {
       return res.status(403).json({ error: "Access denied - no role assigned" });
     }
 
-    let query = `
+    let queryText = `
       SELECT w.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM world_info w
       LEFT JOIN users creator ON w.created_by_user_id = creator.id
       LEFT JOIN users updater ON w.last_updated_by_user_id = updater.id
-      WHERE w.campaign_id = ?
+      WHERE w.campaign_id = $1
     `;
     const params = [campaignId];
+    let paramIndex = 2;
 
     // Filter by visibility: players only see player-visible, DMs see all except hidden
     if (userRole === "player") {
-      query += " AND w.visibility = 'player-visible'";
+      queryText += " AND w.visibility = 'player-visible'";
     } else if (userRole === "dm") {
-      query += " AND w.visibility != 'hidden'";
+      queryText += " AND w.visibility != 'hidden'";
     } else {
       console.error(`[WorldInfo GET] Invalid userRole: ${userRole}`);
       return res.status(403).json({ error: "Access denied" });
     }
 
     if (category) {
-      query += " AND w.category = ?";
+      queryText += ` AND w.category = $${paramIndex}`;
       params.push(category);
+      paramIndex++;
     }
 
     if (search) {
-      query += " AND (w.title LIKE ? OR w.content LIKE ?)";
+      queryText += ` AND (w.title LIKE $${paramIndex} OR w.content LIKE $${paramIndex + 1})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
+      paramIndex += 2;
     }
 
-    query += " ORDER BY w.category, w.title";
+    queryText += " ORDER BY w.category, w.title";
 
-    console.log(`[WorldInfo GET] Executing query: ${query} with params:`, params);
-    const worldInfo = db.prepare(query).all(...params);
+    console.log(`[WorldInfo GET] Executing query: ${queryText} with params:`, params);
+    const worldInfo = await all(queryText, params);
     console.log(`[WorldInfo GET] Found ${worldInfo.length} world info entries`);
 
     // Get tags for each world info entry
-    const worldInfoWithTags = worldInfo.map(info => {
+    const worldInfoWithTags = await Promise.all(worldInfo.map(async (info) => {
       try {
         // Get tags for this world info entry
-        const tags = db.prepare(`
+        const tags = await all(`
           SELECT t.*
           FROM tags t
           INNER JOIN entity_tags et ON t.id = et.tag_id
-          WHERE et.entity_type = 'world_info' AND et.entity_id = ? AND t.campaign_id = ?
+          WHERE et.entity_type = 'world_info' AND et.entity_id = $1 AND t.campaign_id = $2
           ORDER BY t.name ASC
-        `).all(info.id, campaignId);
+        `, [info.id, campaignId]);
 
         return {
           ...info,
@@ -88,7 +91,7 @@ router.get("/:campaignId/world-info", requireCampaignAccess, (req, res) => {
           tags: []
         };
       }
-    });
+    }));
 
     res.json(worldInfoWithTags);
   } catch (error) {
@@ -99,45 +102,46 @@ router.get("/:campaignId/world-info", requireCampaignAccess, (req, res) => {
 });
 
 // GET /api/campaigns/:campaignId/world-info/:id
-router.get("/:campaignId/world-info/:id", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/world-info/:id", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const userRole = req.userCampaignRole;
 
-    let query = `
+    let queryText = `
       SELECT w.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM world_info w
       LEFT JOIN users creator ON w.created_by_user_id = creator.id
       LEFT JOIN users updater ON w.last_updated_by_user_id = updater.id
-      WHERE w.id = ? AND w.campaign_id = ?
+      WHERE w.id = $1 AND w.campaign_id = $2
     `;
     const params = [id, campaignId];
+    let paramIndex = 3;
 
     // Filter by visibility
     if (userRole === "player") {
-      query += " AND w.visibility = 'player-visible'";
+      queryText += " AND w.visibility = 'player-visible'";
     } else if (userRole === "dm") {
-      query += " AND w.visibility != 'hidden'";
+      queryText += " AND w.visibility != 'hidden'";
     } else {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const worldInfo = db.prepare(query).get(...params);
+    const worldInfo = await get(queryText, params);
 
     if (!worldInfo) {
       return res.status(404).json({ error: "World info not found" });
     }
 
     // Get tags for this world info entry
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'world_info' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'world_info' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(worldInfo.id, campaignId);
+    `, [worldInfo.id, campaignId]);
 
     res.json({
       ...worldInfo,
@@ -150,7 +154,7 @@ router.get("/:campaignId/world-info/:id", requireCampaignAccess, (req, res) => {
 });
 
 // POST /api/campaigns/:campaignId/world-info
-router.post("/:campaignId/world-info", requireCampaignDM, (req, res) => {
+router.post("/:campaignId/world-info", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { title, content, category, visibility } = req.body;
@@ -160,12 +164,11 @@ router.post("/:campaignId/world-info", requireCampaignDM, (req, res) => {
       return res.status(400).json({ error: "Title is required" });
     }
 
-    const result = db
-      .prepare(
-        `INSERT INTO world_info (campaign_id, title, content, category, visibility, created_by_user_id, last_updated_by_user_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
+    const result = await query(
+      `INSERT INTO world_info (campaign_id, title, content, category, visibility, created_by_user_id, last_updated_by_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [
         campaignId,
         title.trim(),
         content || null,
@@ -173,28 +176,29 @@ router.post("/:campaignId/world-info", requireCampaignDM, (req, res) => {
         visibility || "dm-only",
         userId, // created_by_user_id
         userId  // last_updated_by_user_id
-      );
+      ]
+    );
 
-    const newWorldInfo = db
-      .prepare(`
-        SELECT w.*, 
-               creator.username as created_by_username, creator.email as created_by_email,
-               updater.username as last_updated_by_username, updater.email as last_updated_by_email
-        FROM world_info w
-        LEFT JOIN users creator ON w.created_by_user_id = creator.id
-        LEFT JOIN users updater ON w.last_updated_by_user_id = updater.id
-        WHERE w.id = ?
-      `)
-      .get(result.lastInsertRowid);
+    const worldInfoId = result.rows[0].id;
+
+    const newWorldInfo = await get(`
+      SELECT w.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM world_info w
+      LEFT JOIN users creator ON w.created_by_user_id = creator.id
+      LEFT JOIN users updater ON w.last_updated_by_user_id = updater.id
+      WHERE w.id = $1
+    `, [worldInfoId]);
 
     // Get tags for this world info entry
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'world_info' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'world_info' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(newWorldInfo.id, campaignId);
+    `, [worldInfoId, campaignId]);
 
     res.status(201).json({
       ...newWorldInfo,
@@ -207,7 +211,7 @@ router.post("/:campaignId/world-info", requireCampaignDM, (req, res) => {
 });
 
 // PUT /api/campaigns/:campaignId/world-info/:id
-router.put("/:campaignId/world-info/:id", requireCampaignDM, (req, res) => {
+router.put("/:campaignId/world-info/:id", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const { title, content, category, visibility } = req.body;
@@ -217,9 +221,7 @@ router.put("/:campaignId/world-info/:id", requireCampaignDM, (req, res) => {
     }
 
     // Check if world info exists and belongs to campaign
-    const existing = db
-      .prepare("SELECT id FROM world_info WHERE id = ? AND campaign_id = ?")
-      .get(id, campaignId);
+    const existing = await get("SELECT id FROM world_info WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
 
     if (!existing) {
       return res.status(404).json({ error: "World info not found" });
@@ -227,40 +229,39 @@ router.put("/:campaignId/world-info/:id", requireCampaignDM, (req, res) => {
 
     const userId = req.user.id;
 
-    db.prepare(
+    await query(
       `UPDATE world_info 
-       SET title = ?, content = ?, category = ?, visibility = ?, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = ?
-       WHERE id = ? AND campaign_id = ?`
-    ).run(
-      title.trim(),
-      content || null,
-      category || null,
-      visibility || "dm-only",
-      userId, // last_updated_by_user_id
-      id,
-      campaignId
+       SET title = $1, content = $2, category = $3, visibility = $4, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = $5
+       WHERE id = $6 AND campaign_id = $7`,
+      [
+        title.trim(),
+        content || null,
+        category || null,
+        visibility || "dm-only",
+        userId, // last_updated_by_user_id
+        id,
+        campaignId
+      ]
     );
 
-    const updatedWorldInfo = db
-      .prepare(`
-        SELECT w.*, 
-               creator.username as created_by_username, creator.email as created_by_email,
-               updater.username as last_updated_by_username, updater.email as last_updated_by_email
-        FROM world_info w
-        LEFT JOIN users creator ON w.created_by_user_id = creator.id
-        LEFT JOIN users updater ON w.last_updated_by_user_id = updater.id
-        WHERE w.id = ?
-      `)
-      .get(id);
+    const updatedWorldInfo = await get(`
+      SELECT w.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM world_info w
+      LEFT JOIN users creator ON w.created_by_user_id = creator.id
+      LEFT JOIN users updater ON w.last_updated_by_user_id = updater.id
+      WHERE w.id = $1
+    `, [id]);
 
     // Get tags for this world info entry
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'world_info' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'world_info' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(id, campaignId);
+    `, [id, campaignId]);
 
     res.json({
       ...updatedWorldInfo,
@@ -273,20 +274,22 @@ router.put("/:campaignId/world-info/:id", requireCampaignDM, (req, res) => {
 });
 
 // DELETE /api/campaigns/:campaignId/world-info/:id
-router.delete("/:campaignId/world-info/:id", requireCampaignDM, (req, res) => {
+router.delete("/:campaignId/world-info/:id", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
 
     // Check if world info exists and belongs to campaign
-    const worldInfo = db
-      .prepare("SELECT id FROM world_info WHERE id = ? AND campaign_id = ?")
-      .get(id, campaignId);
+    const worldInfo = await get("SELECT id FROM world_info WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
 
     if (!worldInfo) {
       return res.status(404).json({ error: "World info not found" });
     }
 
-    db.prepare("DELETE FROM world_info WHERE id = ? AND campaign_id = ?").run(id, campaignId);
+    const result = await query("DELETE FROM world_info WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "World info not found" });
+    }
 
     res.json({ message: "World info deleted successfully" });
   } catch (error) {

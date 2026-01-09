@@ -1,6 +1,7 @@
 // client/src/components/CharacterListPage.jsx - Shared component for Characters, NPCs, Antagonists
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "react-router-dom";
+import { sanitizeHTML } from "../utils/sanitize.js";
 import {
   Box,
   Typography,
@@ -604,7 +605,7 @@ export default function CharacterListPage({ type }) {
                               "& p": { margin: 0, display: "inline" },
                               "& *": { display: "inline" }
                             }}
-                            dangerouslySetInnerHTML={{ __html: character.description }}
+                            dangerouslySetInnerHTML={{ __html: sanitizeHTML(character.description) }}
                           />
                         );
                       }

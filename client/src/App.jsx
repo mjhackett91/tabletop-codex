@@ -5,6 +5,8 @@ import Layout from "./components/Layout";
 import Hero from "./pages/Hero";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import Characters from "./pages/Characters";
 import NPCs from "./pages/NPCs";
@@ -33,6 +35,8 @@ export default function App() {
             <Route path="/" element={<Hero />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route
               path="/dashboard"
               element={

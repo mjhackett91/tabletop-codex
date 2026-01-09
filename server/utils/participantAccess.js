@@ -1,40 +1,31 @@
 // server/utils/participantAccess.js - Campaign participant access and role checking
-import db from "../db.js";
+import { get } from "../db-pg.js";
 
 /**
  * Get user's role in a campaign (dm, player, or null if not a participant)
- * ⚠️ DEV MODE: Checks for simulated role from X-Dev-Simulated-Role header
  * @param {number} campaignId - Campaign ID
  * @param {number} userId - User ID
- * @param {Object} req - Express request object (optional, for dev mode)
- * @returns {string|null} - 'dm', 'player', or null
+ * @param {Object} req - Express request object (optional, currently unused but kept for API compatibility)
+ * @returns {Promise<string|null>} - 'dm', 'player', or null
  */
-export function getUserCampaignRole(campaignId, userId, req = null) {
+export async function getUserCampaignRole(campaignId, userId, req = null) {
   if (!campaignId || !userId) return null;
 
-  // ⚠️ DEV MODE ONLY - Check for simulated role header
-  if (process.env.NODE_ENV !== "production" && req) {
-    const devRole = req.headers["x-dev-simulated-role"];
-    const devCampaignId = req.headers["x-dev-campaign-id"];
-    if (devRole && devCampaignId && String(campaignId) === String(devCampaignId)) {
-      console.log(`[DEV MODE] Using simulated role: ${devRole} for campaign ${campaignId}`);
-      return devRole === "dm" ? "dm" : devRole === "player" ? "player" : null;
-    }
-  }
-
   // Check if user is the campaign owner (always DM)
-  const campaign = db
-    .prepare("SELECT user_id FROM campaigns WHERE id = ?")
-    .get(campaignId);
+  const campaign = await get(
+    "SELECT user_id FROM campaigns WHERE id = $1",
+    [campaignId]
+  );
 
   if (campaign && campaign.user_id === userId) {
     return "dm";
   }
 
   // Check campaign_participants table
-  const participant = db
-    .prepare("SELECT role FROM campaign_participants WHERE campaign_id = ? AND user_id = ?")
-    .get(campaignId, userId);
+  const participant = await get(
+    "SELECT role FROM campaign_participants WHERE campaign_id = $1 AND user_id = $2",
+    [campaignId, userId]
+  );
 
   return participant ? participant.role : null;
 }
@@ -43,31 +34,36 @@ export function getUserCampaignRole(campaignId, userId, req = null) {
  * Check if user has access to a campaign
  * @param {number} campaignId - Campaign ID
  * @param {number} userId - User ID
- * @returns {boolean} - True if user has access (owner or participant)
+ * @param {Object} req - Express request object (optional, kept for API compatibility)
+ * @returns {Promise<boolean>} - True if user has access (owner or participant)
  */
-export function hasCampaignAccess(campaignId, userId, req = null) {
-  return getUserCampaignRole(campaignId, userId, req) !== null;
+export async function hasCampaignAccess(campaignId, userId, req = null) {
+  const role = await getUserCampaignRole(campaignId, userId, req);
+  return role !== null;
 }
 
 /**
  * Check if user is DM of a campaign
  * @param {number} campaignId - Campaign ID
  * @param {number} userId - User ID
- * @param {Object} req - Express request object (optional, for dev mode)
- * @returns {boolean}
+ * @param {Object} req - Express request object (optional, kept for API compatibility)
+ * @returns {Promise<boolean>}
  */
-export function isCampaignDM(campaignId, userId, req = null) {
-  return getUserCampaignRole(campaignId, userId, req) === "dm";
+export async function isCampaignDM(campaignId, userId, req = null) {
+  const role = await getUserCampaignRole(campaignId, userId, req);
+  return role === "dm";
 }
 
 /**
  * Check if user is player in a campaign
  * @param {number} campaignId - Campaign ID
  * @param {number} userId - User ID
- * @returns {boolean}
+ * @param {Object} req - Express request object (optional, kept for API compatibility)
+ * @returns {Promise<boolean>}
  */
-export function isCampaignPlayer(campaignId, userId) {
-  return getUserCampaignRole(campaignId, userId) === "player";
+export async function isCampaignPlayer(campaignId, userId, req = null) {
+  const role = await getUserCampaignRole(campaignId, userId, req);
+  return role === "player";
 }
 
 /**
@@ -134,15 +130,15 @@ export function sanitizeEntityForRole(entity, userRole) {
 }
 
 /**
- * Get the effective role for a user in a campaign, considering dev simulation.
+ * Get the effective role for a user in a campaign.
  * This is a wrapper around getUserCampaignRole that ensures req is passed.
  * @param {number} campaignId - Campaign ID
  * @param {number} userId - User ID
  * @param {Object} req - Express request object
- * @returns {string|null} - 'dm', 'player', or null
+ * @returns {Promise<string|null>} - 'dm', 'player', or null
  */
-export function getRole(campaignId, userId, req) {
-  return getUserCampaignRole(campaignId, userId, req);
+export async function getRole(campaignId, userId, req) {
+  return await getUserCampaignRole(campaignId, userId, req);
 }
 
 export default {

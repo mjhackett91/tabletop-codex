@@ -1,6 +1,6 @@
 // server/routes/sessions.js - Sessions API
 import express from "express";
-import db from "../db.js";
+import { get, all, query } from "../db-pg.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { requireCampaignAccess, requireCampaignDM } from "../middleware/participantAccess.js";
 
@@ -10,7 +10,7 @@ const router = express.Router({ mergeParams: true });
 router.use(authenticateToken);
 
 // GET /api/campaigns/:campaignId/sessions
-router.get("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/sessions", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { search } = req.query;
@@ -27,50 +27,52 @@ router.get("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
       return res.status(403).json({ error: "Access denied - no role assigned" });
     }
 
-    let query = `
+    let queryText = `
       SELECT s.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM sessions s
       LEFT JOIN users creator ON s.created_by_user_id = creator.id
       LEFT JOIN users updater ON s.last_updated_by_user_id = updater.id
-      WHERE s.campaign_id = ?
+      WHERE s.campaign_id = $1
     `;
     const params = [campaignId];
+    let paramIndex = 2;
 
     // Filter by visibility: players only see player-visible, DMs see all except hidden
     if (userRole === "player") {
-      query += " AND s.visibility = 'player-visible'";
+      queryText += " AND s.visibility = 'player-visible'";
     } else if (userRole === "dm") {
-      query += " AND s.visibility != 'hidden'";
+      queryText += " AND s.visibility != 'hidden'";
     } else {
       console.error(`[Sessions GET] Invalid userRole: ${userRole}`);
       return res.status(403).json({ error: "Access denied" });
     }
 
     if (search) {
-      query += " AND (s.title LIKE ? OR s.summary LIKE ?)";
+      queryText += ` AND (s.title LIKE $${paramIndex} OR s.summary LIKE $${paramIndex + 1})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
+      paramIndex += 2;
     }
 
-    query += " ORDER BY s.date_played DESC, s.session_number DESC, s.created_at DESC";
+    queryText += " ORDER BY s.date_played DESC, s.session_number DESC, s.created_at DESC";
 
-    console.log(`[Sessions GET] Executing query: ${query} with params:`, params);
-    const sessions = db.prepare(query).all(...params);
+    console.log(`[Sessions GET] Executing query: ${queryText} with params:`, params);
+    const sessions = await all(queryText, params);
     console.log(`[Sessions GET] Found ${sessions.length} sessions`);
 
     // Get tags for each session
-    const sessionsWithTags = sessions.map(session => {
+    const sessionsWithTags = await Promise.all(sessions.map(async (session) => {
       try {
         // Get tags for this session
-        const tags = db.prepare(`
+        const tags = await all(`
           SELECT t.*
           FROM tags t
           INNER JOIN entity_tags et ON t.id = et.tag_id
-          WHERE et.entity_type = 'session' AND et.entity_id = ? AND t.campaign_id = ?
+          WHERE et.entity_type = 'session' AND et.entity_id = $1 AND t.campaign_id = $2
           ORDER BY t.name ASC
-        `).all(session.id, campaignId);
+        `, [session.id, campaignId]);
 
         return {
           ...session,
@@ -83,7 +85,7 @@ router.get("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
           tags: []
         };
       }
-    });
+    }));
 
     res.json(sessionsWithTags);
   } catch (error) {
@@ -94,67 +96,65 @@ router.get("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
 });
 
 // GET /api/campaigns/:campaignId/sessions/:id
-router.get("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/sessions/:id", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const userRole = req.userCampaignRole;
 
-    let query = `
+    let queryText = `
       SELECT s.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM sessions s
       LEFT JOIN users creator ON s.created_by_user_id = creator.id
       LEFT JOIN users updater ON s.last_updated_by_user_id = updater.id
-      WHERE s.id = ? AND s.campaign_id = ?
+      WHERE s.id = $1 AND s.campaign_id = $2
     `;
     const params = [id, campaignId];
 
     // Filter by visibility
     if (userRole === "player") {
-      query += " AND s.visibility = 'player-visible'";
+      queryText += " AND s.visibility = 'player-visible'";
     } else if (userRole === "dm") {
-      query += " AND s.visibility != 'hidden'";
+      queryText += " AND s.visibility != 'hidden'";
     } else {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const session = db.prepare(query).get(...params);
+    const session = await get(queryText, params);
 
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
 
     // Get session notes for this session
-    const sessionNotes = db
-      .prepare("SELECT * FROM session_notes WHERE session_id = ?")
-      .all(id);
+    const sessionNotes = await all("SELECT * FROM session_notes WHERE session_id = $1", [id]);
 
     // Get player session notes (filtered by visibility)
-    let playerNotesQuery = `
+    let playerNotesQueryText = `
       SELECT psn.*, u.username, u.email 
       FROM player_session_notes psn 
       JOIN users u ON psn.user_id = u.id 
-      WHERE psn.session_id = ?
+      WHERE psn.session_id = $1
     `;
     const playerNotesParams = [id];
     
     if (userRole === "player") {
-      playerNotesQuery += " AND psn.visibility = 'player-visible'";
+      playerNotesQueryText += " AND psn.visibility = 'player-visible'";
     }
     
-    playerNotesQuery += " ORDER BY psn.created_at ASC";
+    playerNotesQueryText += " ORDER BY psn.created_at ASC";
     
-    const playerNotes = db.prepare(playerNotesQuery).all(...playerNotesParams);
+    const playerNotes = await all(playerNotesQueryText, playerNotesParams);
 
     // Get tags for this session
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'session' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'session' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(session.id, campaignId);
+    `, [session.id, campaignId]);
 
     res.json({ 
       ...session, 
@@ -170,7 +170,7 @@ router.get("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
 
 // POST /api/campaigns/:campaignId/sessions
 // Allow both DMs and players to create sessions
-router.post("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
+router.post("/:campaignId/sessions", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { 
@@ -193,26 +193,26 @@ router.post("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
     // Auto-increment session number if not provided
     let finalSessionNumber = session_number;
     if (!finalSessionNumber) {
-      const lastSession = db
-        .prepare("SELECT session_number FROM sessions WHERE campaign_id = ? ORDER BY session_number DESC LIMIT 1")
-        .get(campaignId);
+      const lastSession = await get(
+        "SELECT session_number FROM sessions WHERE campaign_id = $1 ORDER BY session_number DESC LIMIT 1",
+        [campaignId]
+      );
       finalSessionNumber = lastSession ? (lastSession.session_number || 0) + 1 : 1;
     }
 
     // Default visibility: player-visible for players, dm-only for DMs
     const defaultVisibility = userRole === "player" ? "player-visible" : "dm-only";
 
-    const result = db
-      .prepare(
-        `INSERT INTO sessions (
-          campaign_id, session_number, title, date_played, summary,
-          notes_characters, notes_npcs, notes_antagonists, notes_locations,
-          notes_factions, notes_world_info, notes_quests, visibility,
-          created_by_user_id, last_updated_by_user_id
-        )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    const result = await query(
+      `INSERT INTO sessions (
+        campaign_id, session_number, title, date_played, summary,
+        notes_characters, notes_npcs, notes_antagonists, notes_locations,
+        notes_factions, notes_world_info, notes_quests, visibility,
+        created_by_user_id, last_updated_by_user_id
       )
-      .run(
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       RETURNING id`,
+      [
         campaignId,
         finalSessionNumber,
         title || null,
@@ -228,20 +228,20 @@ router.post("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
         visibility || defaultVisibility,
         userId, // created_by_user_id
         userId  // last_updated_by_user_id
-      );
+      ]
+    );
 
-    const newSession = db
-      .prepare("SELECT * FROM sessions WHERE id = ?")
-      .get(result.lastInsertRowid);
+    const sessionId = result.rows[0].id;
+    const newSession = await get("SELECT * FROM sessions WHERE id = $1", [sessionId]);
 
     // Get tags for this session
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'session' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'session' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(newSession.id, campaignId);
+    `, [sessionId, campaignId]);
 
     res.status(201).json({
       ...newSession,
@@ -255,7 +255,7 @@ router.post("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
 
 // PUT /api/campaigns/:campaignId/sessions/:id
 // Allow both DMs and players to edit sessions (players can only edit their own)
-router.put("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
+router.put("/:campaignId/sessions/:id", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const { 
@@ -276,9 +276,10 @@ router.put("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
     const userRole = req.userCampaignRole;
 
     // Check if session exists and belongs to campaign
-    const existing = db
-      .prepare("SELECT id, created_by_user_id FROM sessions WHERE id = ? AND campaign_id = ?")
-      .get(id, campaignId);
+    const existing = await get(
+      "SELECT id, created_by_user_id, visibility FROM sessions WHERE id = $1 AND campaign_id = $2",
+      [id, campaignId]
+    );
 
     if (!existing) {
       return res.status(404).json({ error: "Session not found" });
@@ -289,44 +290,43 @@ router.put("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
       return res.status(403).json({ error: "You can only edit sessions you created" });
     }
 
-    db.prepare(
+    await query(
       `UPDATE sessions 
-       SET session_number = ?, title = ?, date_played = ?, summary = ?,
-           notes_characters = ?, notes_npcs = ?, notes_antagonists = ?,
-           notes_locations = ?, notes_factions = ?, notes_world_info = ?,
-           notes_quests = ?, visibility = ?, updated_at = CURRENT_TIMESTAMP,
-           last_updated_by_user_id = ?
-       WHERE id = ? AND campaign_id = ?`
-    ).run(
-      session_number || null,
-      title || null,
-      date_played || null,
-      summary || null,
-      notes_characters || null,
-      notes_npcs || null,
-      notes_antagonists || null,
-      notes_locations || null,
-      notes_factions || null,
-      notes_world_info || null,
-      notes_quests || null,
-      visibility !== undefined ? visibility : existing.visibility || "dm-only",
-      userId, // last_updated_by_user_id
-      id,
-      campaignId
+       SET session_number = $1, title = $2, date_played = $3, summary = $4,
+           notes_characters = $5, notes_npcs = $6, notes_antagonists = $7,
+           notes_locations = $8, notes_factions = $9, notes_world_info = $10,
+           notes_quests = $11, visibility = $12, updated_at = CURRENT_TIMESTAMP,
+           last_updated_by_user_id = $13
+       WHERE id = $14 AND campaign_id = $15`,
+      [
+        session_number || null,
+        title || null,
+        date_played || null,
+        summary || null,
+        notes_characters || null,
+        notes_npcs || null,
+        notes_antagonists || null,
+        notes_locations || null,
+        notes_factions || null,
+        notes_world_info || null,
+        notes_quests || null,
+        visibility !== undefined ? visibility : existing.visibility || "dm-only",
+        userId, // last_updated_by_user_id
+        id,
+        campaignId
+      ]
     );
 
-    const updatedSession = db
-      .prepare("SELECT * FROM sessions WHERE id = ?")
-      .get(id);
+    const updatedSession = await get("SELECT * FROM sessions WHERE id = $1", [id]);
 
     // Get tags for this session
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'session' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'session' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(id, campaignId);
+    `, [id, campaignId]);
 
     res.json({
       ...updatedSession,
@@ -340,16 +340,17 @@ router.put("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
 
 // DELETE /api/campaigns/:campaignId/sessions/:id
 // DMs can delete any session, players can only delete their own
-router.delete("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
+router.delete("/:campaignId/sessions/:id", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const userId = req.user.id;
     const userRole = req.userCampaignRole;
 
     // Check if session exists and belongs to campaign
-    const session = db
-      .prepare("SELECT id, created_by_user_id FROM sessions WHERE id = ? AND campaign_id = ?")
-      .get(id, campaignId);
+    const session = await get(
+      "SELECT id, created_by_user_id FROM sessions WHERE id = $1 AND campaign_id = $2",
+      [id, campaignId]
+    );
 
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
@@ -361,11 +362,15 @@ router.delete("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => 
     }
 
     // Delete session notes first (CASCADE should handle this, but being explicit)
-    db.prepare("DELETE FROM session_notes WHERE session_id = ?").run(id);
-    db.prepare("DELETE FROM player_session_notes WHERE session_id = ?").run(id);
+    await query("DELETE FROM session_notes WHERE session_id = $1", [id]);
+    await query("DELETE FROM player_session_notes WHERE session_id = $1", [id]);
     
     // Delete session
-    db.prepare("DELETE FROM sessions WHERE id = ? AND campaign_id = ?").run(id, campaignId);
+    const result = await query("DELETE FROM sessions WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Session not found" });
+    }
 
     res.json({ message: "Session deleted successfully" });
   } catch (error) {
@@ -375,15 +380,16 @@ router.delete("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => 
 });
 
 // POST /api/campaigns/:campaignId/sessions/:id/notes
-router.post("/:campaignId/sessions/:id/notes", requireCampaignDM, (req, res) => {
+router.post("/:campaignId/sessions/:id/notes", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId, id: sessionId } = req.params;
     const { entity_type, entity_id, quick_note, detailed_note } = req.body;
 
     // Verify session belongs to campaign
-    const session = db
-      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
-      .get(sessionId, campaignId);
+    const session = await get(
+      "SELECT id FROM sessions WHERE id = $1 AND campaign_id = $2",
+      [sessionId, campaignId]
+    );
 
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
@@ -393,22 +399,21 @@ router.post("/:campaignId/sessions/:id/notes", requireCampaignDM, (req, res) => 
       return res.status(400).json({ error: "Entity type and ID are required" });
     }
 
-    const result = db
-      .prepare(
-        `INSERT INTO session_notes (session_id, entity_type, entity_id, quick_note, detailed_note)
-         VALUES (?, ?, ?, ?, ?)`
-      )
-      .run(
+    const result = await query(
+      `INSERT INTO session_notes (session_id, entity_type, entity_id, quick_note, detailed_note)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [
         sessionId,
         entity_type,
         entity_id,
         quick_note || null,
         detailed_note || null
-      );
+      ]
+    );
 
-    const newNote = db
-      .prepare("SELECT * FROM session_notes WHERE id = ?")
-      .get(result.lastInsertRowid);
+    const noteId = result.rows[0].id;
+    const newNote = await get("SELECT * FROM session_notes WHERE id = $1", [noteId]);
 
     res.status(201).json(newNote);
   } catch (error) {
@@ -425,9 +430,10 @@ router.post("/:campaignId/sessions/:id/post-notes", requireCampaignAccess, async
     const { entity_type, entity_id, note_content } = req.body;
 
     // Verify session belongs to campaign
-    const session = db
-      .prepare("SELECT id, created_by_user_id FROM sessions WHERE id = ? AND campaign_id = ?")
-      .get(sessionId, campaignId);
+    const session = await get(
+      "SELECT id, created_by_user_id FROM sessions WHERE id = $1 AND campaign_id = $2",
+      [sessionId, campaignId]
+    );
 
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
@@ -445,47 +451,45 @@ router.post("/:campaignId/sessions/:id/post-notes", requireCampaignAccess, async
     }
 
     // Get session number for the reference
-    const sessionData = db
-      .prepare("SELECT session_number FROM sessions WHERE id = ?")
-      .get(sessionId);
+    const sessionData = await get("SELECT session_number FROM sessions WHERE id = $1", [sessionId]);
     
     const sessionRef = sessionData ? `[From Session ${sessionData.session_number}]` : '[From Session]';
     const separator = '\n\n';
     const appendedNote = `${separator}${note_content}${separator}${sessionRef}`;
 
     // Update the appropriate entity based on type
-    let updateQuery = "";
+    let updateQueryText = "";
     let params = [];
 
     switch (entity_type) {
       case "character":
-        updateQuery = "UPDATE characters SET description = COALESCE(description, '') || ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND campaign_id = ?";
+        updateQueryText = "UPDATE characters SET description = COALESCE(description, '') || $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND campaign_id = $3";
         params = [appendedNote, entity_id, campaignId];
         break;
       case "location":
-        updateQuery = "UPDATE locations SET description = COALESCE(description, '') || ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND campaign_id = ?";
+        updateQueryText = "UPDATE locations SET description = COALESCE(description, '') || $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND campaign_id = $3";
         params = [appendedNote, entity_id, campaignId];
         break;
       case "faction":
-        updateQuery = "UPDATE factions SET description = COALESCE(description, '') || ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND campaign_id = ?";
+        updateQueryText = "UPDATE factions SET description = COALESCE(description, '') || $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND campaign_id = $3";
         params = [appendedNote, entity_id, campaignId];
         break;
       case "world_info":
-        updateQuery = "UPDATE world_info SET content = COALESCE(content, '') || ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND campaign_id = ?";
+        updateQueryText = "UPDATE world_info SET content = COALESCE(content, '') || $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND campaign_id = $3";
         params = [appendedNote, entity_id, campaignId];
         break;
       case "quest":
-        updateQuery = "UPDATE quests SET description = COALESCE(description, '') || ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND campaign_id = ?";
+        updateQueryText = "UPDATE quests SET description = COALESCE(description, '') || $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND campaign_id = $3";
         params = [appendedNote, entity_id, campaignId];
         break;
       default:
         return res.status(400).json({ error: "Invalid entity type" });
     }
 
-    console.log("Posting note to entity:", { entity_type, entity_id, sessionId, campaignId, updateQuery, params });
-    const result = db.prepare(updateQuery).run(...params);
+    console.log("Posting note to entity:", { entity_type, entity_id, sessionId, campaignId, updateQueryText, params });
+    const result = await query(updateQueryText, params);
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Entity not found" });
     }
 
@@ -498,32 +502,33 @@ router.post("/:campaignId/sessions/:id/post-notes", requireCampaignAccess, async
 
 // GET /api/campaigns/:campaignId/sessions/:id/player-notes
 // Get player session notes for a session (filtered by visibility)
-router.get("/:campaignId/sessions/:id/player-notes", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/sessions/:id/player-notes", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id: sessionId } = req.params;
     const userId = req.user.id;
     const userRole = req.userCampaignRole;
 
     // Verify session belongs to campaign
-    const session = db
-      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
-      .get(sessionId, campaignId);
+    const session = await get(
+      "SELECT id FROM sessions WHERE id = $1 AND campaign_id = $2",
+      [sessionId, campaignId]
+    );
 
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
 
-    let query = "SELECT psn.*, u.username, u.email FROM player_session_notes psn JOIN users u ON psn.user_id = u.id WHERE psn.session_id = ?";
+    let queryText = "SELECT psn.*, u.username, u.email FROM player_session_notes psn JOIN users u ON psn.user_id = u.id WHERE psn.session_id = $1";
     const params = [sessionId];
 
     // Filter by visibility: players only see player-visible notes, DMs see all
     if (userRole === "player") {
-      query += " AND psn.visibility = 'player-visible'";
+      queryText += " AND psn.visibility = 'player-visible'";
     }
 
-    query += " ORDER BY psn.created_at ASC";
+    queryText += " ORDER BY psn.created_at ASC";
 
-    const notes = db.prepare(query).all(...params);
+    const notes = await all(queryText, params);
 
     res.json(notes);
   } catch (error) {
@@ -534,7 +539,7 @@ router.get("/:campaignId/sessions/:id/player-notes", requireCampaignAccess, (req
 
 // POST /api/campaigns/:campaignId/sessions/:id/player-notes
 // Players can add session notes (always visible to DM, optionally to other players)
-router.post("/:campaignId/sessions/:id/player-notes", requireCampaignAccess, (req, res) => {
+router.post("/:campaignId/sessions/:id/player-notes", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id: sessionId } = req.params;
     const { note_content, visibility } = req.body;
@@ -542,9 +547,10 @@ router.post("/:campaignId/sessions/:id/player-notes", requireCampaignAccess, (re
     const userRole = req.userCampaignRole;
 
     // Verify session belongs to campaign
-    const session = db
-      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
-      .get(sessionId, campaignId);
+    const session = await get(
+      "SELECT id FROM sessions WHERE id = $1 AND campaign_id = $2",
+      [sessionId, campaignId]
+    );
 
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
@@ -558,21 +564,20 @@ router.post("/:campaignId/sessions/:id/player-notes", requireCampaignAccess, (re
     // DMs can also add player notes (useful for consistency)
     const finalVisibility = visibility === "player-visible" ? "player-visible" : "dm-only";
 
-    const result = db
-      .prepare(
-        `INSERT INTO player_session_notes (session_id, user_id, note_content, visibility)
-         VALUES (?, ?, ?, ?)`
-      )
-      .run(sessionId, userId, note_content.trim(), finalVisibility);
+    const result = await query(
+      `INSERT INTO player_session_notes (session_id, user_id, note_content, visibility)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [sessionId, userId, note_content.trim(), finalVisibility]
+    );
 
-    const newNote = db
-      .prepare(`
-        SELECT psn.*, u.username, u.email 
-        FROM player_session_notes psn 
-        JOIN users u ON psn.user_id = u.id 
-        WHERE psn.id = ?
-      `)
-      .get(result.lastInsertRowid);
+    const noteId = result.rows[0].id;
+    const newNote = await get(`
+      SELECT psn.*, u.username, u.email 
+      FROM player_session_notes psn 
+      JOIN users u ON psn.user_id = u.id 
+      WHERE psn.id = $1
+    `, [noteId]);
 
     res.status(201).json(newNote);
   } catch (error) {
@@ -583,7 +588,7 @@ router.post("/:campaignId/sessions/:id/player-notes", requireCampaignAccess, (re
 
 // PUT /api/campaigns/:campaignId/sessions/:id/player-notes/:noteId
 // Players can update their own session notes
-router.put("/:campaignId/sessions/:id/player-notes/:noteId", requireCampaignAccess, (req, res) => {
+router.put("/:campaignId/sessions/:id/player-notes/:noteId", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id: sessionId, noteId } = req.params;
     const { note_content, visibility } = req.body;
@@ -591,18 +596,20 @@ router.put("/:campaignId/sessions/:id/player-notes/:noteId", requireCampaignAcce
     const userRole = req.userCampaignRole;
 
     // Verify session belongs to campaign
-    const session = db
-      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
-      .get(sessionId, campaignId);
+    const session = await get(
+      "SELECT id FROM sessions WHERE id = $1 AND campaign_id = $2",
+      [sessionId, campaignId]
+    );
 
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
 
     // Get existing note
-    const existing = db
-      .prepare("SELECT * FROM player_session_notes WHERE id = ? AND session_id = ?")
-      .get(noteId, sessionId);
+    const existing = await get(
+      "SELECT * FROM player_session_notes WHERE id = $1 AND session_id = $2",
+      [noteId, sessionId]
+    );
 
     if (!existing) {
       return res.status(404).json({ error: "Note not found" });
@@ -619,20 +626,19 @@ router.put("/:campaignId/sessions/:id/player-notes/:noteId", requireCampaignAcce
 
     const finalVisibility = visibility === "player-visible" ? "player-visible" : "dm-only";
 
-    db.prepare(
+    await query(
       `UPDATE player_session_notes 
-       SET note_content = ?, visibility = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ? AND session_id = ?`
-    ).run(note_content.trim(), finalVisibility, noteId, sessionId);
+       SET note_content = $1, visibility = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3 AND session_id = $4`,
+      [note_content.trim(), finalVisibility, noteId, sessionId]
+    );
 
-    const updated = db
-      .prepare(`
-        SELECT psn.*, u.username, u.email 
-        FROM player_session_notes psn 
-        JOIN users u ON psn.user_id = u.id 
-        WHERE psn.id = ?
-      `)
-      .get(noteId);
+    const updated = await get(`
+      SELECT psn.*, u.username, u.email 
+      FROM player_session_notes psn 
+      JOIN users u ON psn.user_id = u.id 
+      WHERE psn.id = $1
+    `, [noteId]);
 
     res.json(updated);
   } catch (error) {
@@ -643,25 +649,27 @@ router.put("/:campaignId/sessions/:id/player-notes/:noteId", requireCampaignAcce
 
 // DELETE /api/campaigns/:campaignId/sessions/:id/player-notes/:noteId
 // Players can delete their own session notes, DMs can delete any
-router.delete("/:campaignId/sessions/:id/player-notes/:noteId", requireCampaignAccess, (req, res) => {
+router.delete("/:campaignId/sessions/:id/player-notes/:noteId", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id: sessionId, noteId } = req.params;
     const userId = req.user.id;
     const userRole = req.userCampaignRole;
 
     // Verify session belongs to campaign
-    const session = db
-      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
-      .get(sessionId, campaignId);
+    const session = await get(
+      "SELECT id FROM sessions WHERE id = $1 AND campaign_id = $2",
+      [sessionId, campaignId]
+    );
 
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
 
     // Get existing note
-    const existing = db
-      .prepare("SELECT * FROM player_session_notes WHERE id = ? AND session_id = ?")
-      .get(noteId, sessionId);
+    const existing = await get(
+      "SELECT * FROM player_session_notes WHERE id = $1 AND session_id = $2",
+      [noteId, sessionId]
+    );
 
     if (!existing) {
       return res.status(404).json({ error: "Note not found" });
@@ -672,7 +680,14 @@ router.delete("/:campaignId/sessions/:id/player-notes/:noteId", requireCampaignA
       return res.status(403).json({ error: "You can only delete your own notes" });
     }
 
-    db.prepare("DELETE FROM player_session_notes WHERE id = ? AND session_id = ?").run(noteId, sessionId);
+    const result = await query(
+      "DELETE FROM player_session_notes WHERE id = $1 AND session_id = $2",
+      [noteId, sessionId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Note not found" });
+    }
 
     res.json({ message: "Note deleted successfully" });
   } catch (error) {

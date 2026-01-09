@@ -1,6 +1,6 @@
 // server/routes/locations.js - Locations API
 import express from "express";
-import db from "../db.js";
+import { get, all, query } from "../db-pg.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { requireCampaignAccess, requireCampaignDM } from "../middleware/participantAccess.js";
 
@@ -18,7 +18,7 @@ router.use((req, res, next) => {
 });
 
 // GET /api/campaigns/:campaignId/locations
-router.get("/:campaignId/locations", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/locations", requireCampaignAccess, async (req, res) => {
   try {
     console.log("Locations route hit - params:", req.params);
     console.log("Locations route hit - query:", req.query);
@@ -33,68 +33,69 @@ router.get("/:campaignId/locations", requireCampaignAccess, (req, res) => {
     
     console.log("Fetching locations for campaign:", campaignId);
 
-    let query = `
+    let queryText = `
       SELECT l.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM locations l
       LEFT JOIN users creator ON l.created_by_user_id = creator.id
       LEFT JOIN users updater ON l.last_updated_by_user_id = updater.id
-      WHERE l.campaign_id = ?
+      WHERE l.campaign_id = $1
     `;
     const params = [campaignId];
+    let paramIndex = 2;
 
     // Filter by visibility: players only see player-visible, DMs see all except hidden
     if (userRole === "player") {
-      query += " AND l.visibility = 'player-visible'";
+      queryText += " AND l.visibility = 'player-visible'";
     } else if (userRole === "dm") {
-      query += " AND l.visibility != 'hidden'";
+      queryText += " AND l.visibility != 'hidden'";
     } else {
       return res.status(403).json({ error: "Access denied" });
     }
 
     if (parent_id !== undefined) {
       if (parent_id === null || parent_id === "null") {
-        query += " AND l.parent_location_id IS NULL";
+        queryText += " AND l.parent_location_id IS NULL";
       } else {
-        query += " AND l.parent_location_id = ?";
+        queryText += ` AND l.parent_location_id = $${paramIndex}`;
         params.push(parseInt(parent_id));
+        paramIndex++;
       }
     }
 
     if (search) {
-      query += " AND (l.name LIKE ? OR l.description LIKE ?)";
+      queryText += ` AND (l.name LIKE $${paramIndex} OR l.description LIKE $${paramIndex + 1})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
+      paramIndex += 2;
     }
 
-    query += " ORDER BY l.name";
+    queryText += " ORDER BY l.name";
 
-    console.log("Executing query:", query);
+    console.log("Executing query:", queryText);
     console.log("With params:", params);
     
-    const locations = db.prepare(query).all(...params);
+    const locations = await all(queryText, params);
     console.log("Locations found:", locations.length);
 
     // Get parent location name and tags for each location
-    const locationsWithParents = locations.map(location => {
+    const locationsWithParents = await Promise.all(locations.map(async (location) => {
       try {
         let parent_location_name = null;
         if (location.parent_location_id) {
-          const parent = db
-            .prepare("SELECT name FROM locations WHERE id = ?")
-            .get(location.parent_location_id);
+          const parent = await get("SELECT name FROM locations WHERE id = $1", [location.parent_location_id]);
           parent_location_name = parent?.name || null;
         }
 
         // Get tags for this location
-        const tags = db.prepare(`
+        const tags = await all(`
           SELECT t.*
           FROM tags t
           INNER JOIN entity_tags et ON t.id = et.tag_id
-          WHERE et.entity_type = 'location' AND et.entity_id = ? AND t.campaign_id = ?
+          WHERE et.entity_type = 'location' AND et.entity_id = $1 AND t.campaign_id = $2
           ORDER BY t.name ASC
-        `).all(location.id, campaignId);
+        `, [location.id, campaignId]);
 
         return {
           ...location,
@@ -109,7 +110,7 @@ router.get("/:campaignId/locations", requireCampaignAccess, (req, res) => {
           tags: []
         };
       }
-    });
+    }));
 
     console.log("Returning locations:", locationsWithParents.length);
     res.json(locationsWithParents);
@@ -121,32 +122,33 @@ router.get("/:campaignId/locations", requireCampaignAccess, (req, res) => {
 });
 
 // GET /api/campaigns/:campaignId/locations/:id
-router.get("/:campaignId/locations/:id", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/locations/:id", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const userRole = req.userCampaignRole;
 
-    let query = `
+    let queryText = `
       SELECT l.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM locations l
       LEFT JOIN users creator ON l.created_by_user_id = creator.id
       LEFT JOIN users updater ON l.last_updated_by_user_id = updater.id
-      WHERE l.id = ? AND l.campaign_id = ?
+      WHERE l.id = $1 AND l.campaign_id = $2
     `;
     const params = [id, campaignId];
+    let paramIndex = 3;
 
     // Filter by visibility
     if (userRole === "player") {
-      query += " AND l.visibility = 'player-visible'";
+      queryText += " AND l.visibility = 'player-visible'";
     } else if (userRole === "dm") {
-      query += " AND l.visibility != 'hidden'";
+      queryText += " AND l.visibility != 'hidden'";
     } else {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const location = db.prepare(query).get(...params);
+    const location = await get(queryText, params);
 
     if (!location) {
       return res.status(404).json({ error: "Location not found" });
@@ -155,20 +157,18 @@ router.get("/:campaignId/locations/:id", requireCampaignAccess, (req, res) => {
     // Get parent location if it exists
     let parent_location_name = null;
     if (location.parent_location_id) {
-      const parent = db
-        .prepare("SELECT name FROM locations WHERE id = ?")
-        .get(location.parent_location_id);
+      const parent = await get("SELECT name FROM locations WHERE id = $1", [location.parent_location_id]);
       parent_location_name = parent?.name || null;
     }
 
     // Get tags for this location
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'location' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'location' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(location.id, campaignId);
+    `, [location.id, campaignId]);
 
     res.json({
       ...location,
@@ -182,7 +182,7 @@ router.get("/:campaignId/locations/:id", requireCampaignAccess, (req, res) => {
 });
 
 // POST /api/campaigns/:campaignId/locations
-router.post("/:campaignId/locations", requireCampaignDM, (req, res) => {
+router.post("/:campaignId/locations", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { name, description, location_type, parent_location_id, visibility } = req.body;
@@ -194,21 +194,21 @@ router.post("/:campaignId/locations", requireCampaignDM, (req, res) => {
 
     // Validate parent_location_id if provided
     if (parent_location_id) {
-      const parentExists = db
-        .prepare("SELECT id FROM locations WHERE id = ? AND campaign_id = ?")
-        .get(parent_location_id, campaignId);
+      const parentExists = await get(
+        "SELECT id FROM locations WHERE id = $1 AND campaign_id = $2",
+        [parent_location_id, campaignId]
+      );
       
       if (!parentExists) {
         return res.status(400).json({ error: "Invalid parent location" });
       }
     }
 
-    const result = db
-      .prepare(
-        `INSERT INTO locations (campaign_id, name, description, location_type, parent_location_id, visibility, created_by_user_id, last_updated_by_user_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
+    const result = await query(
+      `INSERT INTO locations (campaign_id, name, description, location_type, parent_location_id, visibility, created_by_user_id, last_updated_by_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
+      [
         campaignId,
         name.trim(),
         description || null,
@@ -217,37 +217,36 @@ router.post("/:campaignId/locations", requireCampaignDM, (req, res) => {
         visibility || "dm-only",
         userId, // created_by_user_id
         userId  // last_updated_by_user_id
-      );
+      ]
+    );
 
-    const newLocation = db
-      .prepare(`
-        SELECT l.*, 
-               creator.username as created_by_username, creator.email as created_by_email,
-               updater.username as last_updated_by_username, updater.email as last_updated_by_email
-        FROM locations l
-        LEFT JOIN users creator ON l.created_by_user_id = creator.id
-        LEFT JOIN users updater ON l.last_updated_by_user_id = updater.id
-        WHERE l.id = ?
-      `)
-      .get(result.lastInsertRowid);
+    const locationId = result.rows[0].id;
+
+    const newLocation = await get(`
+      SELECT l.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM locations l
+      LEFT JOIN users creator ON l.created_by_user_id = creator.id
+      LEFT JOIN users updater ON l.last_updated_by_user_id = updater.id
+      WHERE l.id = $1
+    `, [locationId]);
 
     // Get parent location name if it exists
     let parent_location_name = null;
     if (newLocation.parent_location_id) {
-      const parent = db
-        .prepare("SELECT name FROM locations WHERE id = ?")
-        .get(newLocation.parent_location_id);
+      const parent = await get("SELECT name FROM locations WHERE id = $1", [newLocation.parent_location_id]);
       parent_location_name = parent?.name || null;
     }
 
     // Get tags for this location
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'location' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'location' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(newLocation.id, campaignId);
+    `, [locationId, campaignId]);
 
     res.status(201).json({
       ...newLocation,
@@ -261,7 +260,7 @@ router.post("/:campaignId/locations", requireCampaignDM, (req, res) => {
 });
 
 // PUT /api/campaigns/:campaignId/locations/:id
-router.put("/:campaignId/locations/:id", requireCampaignDM, (req, res) => {
+router.put("/:campaignId/locations/:id", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const { name, description, location_type, parent_location_id, visibility } = req.body;
@@ -272,9 +271,7 @@ router.put("/:campaignId/locations/:id", requireCampaignDM, (req, res) => {
     }
 
     // Check if location exists and belongs to campaign
-    const existing = db
-      .prepare("SELECT id FROM locations WHERE id = ? AND campaign_id = ?")
-      .get(id, campaignId);
+    const existing = await get("SELECT id FROM locations WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
 
     if (!existing) {
       return res.status(404).json({ error: "Location not found" });
@@ -282,9 +279,10 @@ router.put("/:campaignId/locations/:id", requireCampaignDM, (req, res) => {
 
     // Validate parent_location_id if provided (and not creating a cycle)
     if (parent_location_id) {
-      const parentExists = db
-        .prepare("SELECT id FROM locations WHERE id = ? AND campaign_id = ?")
-        .get(parent_location_id, campaignId);
+      const parentExists = await get(
+        "SELECT id FROM locations WHERE id = $1 AND campaign_id = $2",
+        [parent_location_id, campaignId]
+      );
       
       if (!parentExists) {
         return res.status(400).json({ error: "Invalid parent location" });
@@ -299,50 +297,47 @@ router.put("/:campaignId/locations/:id", requireCampaignDM, (req, res) => {
       // TODO: Add more robust cycle detection if needed
     }
 
-    db.prepare(
+    await query(
       `UPDATE locations 
-       SET name = ?, description = ?, location_type = ?, parent_location_id = ?, visibility = ?, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = ?
-       WHERE id = ? AND campaign_id = ?`
-    ).run(
-      name.trim(),
-      description || null,
-      location_type || null,
-      parent_location_id || null,
-      visibility || "dm-only",
-      userId, // last_updated_by_user_id
-      id,
-      campaignId
+       SET name = $1, description = $2, location_type = $3, parent_location_id = $4, visibility = $5, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = $6
+       WHERE id = $7 AND campaign_id = $8`,
+      [
+        name.trim(),
+        description || null,
+        location_type || null,
+        parent_location_id || null,
+        visibility || "dm-only",
+        userId, // last_updated_by_user_id
+        id,
+        campaignId
+      ]
     );
 
-    const updatedLocation = db
-      .prepare(`
-        SELECT l.*, 
-               creator.username as created_by_username, creator.email as created_by_email,
-               updater.username as last_updated_by_username, updater.email as last_updated_by_email
-        FROM locations l
-        LEFT JOIN users creator ON l.created_by_user_id = creator.id
-        LEFT JOIN users updater ON l.last_updated_by_user_id = updater.id
-        WHERE l.id = ?
-      `)
-      .get(id);
+    const updatedLocation = await get(`
+      SELECT l.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM locations l
+      LEFT JOIN users creator ON l.created_by_user_id = creator.id
+      LEFT JOIN users updater ON l.last_updated_by_user_id = updater.id
+      WHERE l.id = $1
+    `, [id]);
 
     // Get parent location name if it exists
     let parent_location_name = null;
     if (updatedLocation.parent_location_id) {
-      const parent = db
-        .prepare("SELECT name FROM locations WHERE id = ?")
-        .get(updatedLocation.parent_location_id);
+      const parent = await get("SELECT name FROM locations WHERE id = $1", [updatedLocation.parent_location_id]);
       parent_location_name = parent?.name || null;
     }
 
     // Get tags for this location
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'location' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'location' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(id, campaignId);
+    `, [id, campaignId]);
 
     res.json({
       ...updatedLocation,
@@ -356,23 +351,19 @@ router.put("/:campaignId/locations/:id", requireCampaignDM, (req, res) => {
 });
 
 // DELETE /api/campaigns/:campaignId/locations/:id
-router.delete("/:campaignId/locations/:id", requireCampaignDM, (req, res) => {
+router.delete("/:campaignId/locations/:id", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
 
     // Check if location exists and belongs to campaign
-    const location = db
-      .prepare("SELECT id FROM locations WHERE id = ? AND campaign_id = ?")
-      .get(id, campaignId);
+    const location = await get("SELECT id FROM locations WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
 
     if (!location) {
       return res.status(404).json({ error: "Location not found" });
     }
 
     // Check if location has children (prevent orphaned locations)
-    const children = db
-      .prepare("SELECT id FROM locations WHERE parent_location_id = ?")
-      .all(id);
+    const children = await all("SELECT id FROM locations WHERE parent_location_id = $1", [id]);
 
     if (children.length > 0) {
       return res.status(400).json({ 
@@ -380,7 +371,11 @@ router.delete("/:campaignId/locations/:id", requireCampaignDM, (req, res) => {
       });
     }
 
-    db.prepare("DELETE FROM locations WHERE id = ? AND campaign_id = ?").run(id, campaignId);
+    const result = await query("DELETE FROM locations WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Location not found" });
+    }
 
     res.json({ message: "Location deleted successfully" });
   } catch (error) {

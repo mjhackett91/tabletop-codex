@@ -1,7 +1,13 @@
 // server/middleware/auth.js
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
+// In production, JWT_SECRET must be set via environment variable
+if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+  console.error("❌ JWT_SECRET environment variable is required in production");
+  process.exit(1);
+}
+
+const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production-dev-only";
 
 export const authenticateToken = (req, res, next) => {
   const authHeader = req.headers["authorization"];

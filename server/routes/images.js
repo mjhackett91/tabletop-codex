@@ -3,7 +3,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import db from "../db.js";
+import { get, all, query } from "../db-pg.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { requireCampaignAccess, requireCampaignDM } from "../middleware/participantAccess.js";
 
@@ -55,7 +55,7 @@ const upload = multer({
 
 // POST /api/campaigns/:campaignId/images/:entityType/:entityId
 // Upload an image for a specific entity
-router.post("/:campaignId/images/:entityType/:entityId", requireCampaignDM, upload.single('image'), (req, res) => {
+router.post("/:campaignId/images/:entityType/:entityId", requireCampaignDM, upload.single('image'), async (req, res) => {
   try {
     const { campaignId, entityType, entityId } = req.params;
     const userId = req.user.id;
@@ -84,10 +84,11 @@ router.post("/:campaignId/images/:entityType/:entityId", requireCampaignDM, uplo
       size: req.file.size
     });
     
-    const result = db.prepare(`
+    const result = await query(`
       INSERT INTO images (campaign_id, entity_type, entity_id, file_path, file_name, file_size, mime_type)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id
+    `, [
       campaignId,
       entityType,
       entityId,
@@ -95,9 +96,10 @@ router.post("/:campaignId/images/:entityType/:entityId", requireCampaignDM, uplo
       req.file.originalname,
       req.file.size,
       req.file.mimetype
-    );
+    ]);
 
-    const image = db.prepare("SELECT * FROM images WHERE id = ?").get(result.lastInsertRowid);
+    const imageId = result.rows[0].id;
+    const image = await get("SELECT * FROM images WHERE id = $1", [imageId]);
     console.log(`[Images] Image saved to database:`, image);
 
     res.status(201).json(image);
@@ -111,20 +113,21 @@ router.post("/:campaignId/images/:entityType/:entityId", requireCampaignDM, uplo
         console.error("Error cleaning up file:", unlinkError);
       }
     }
-    res.status(500).json({ error: "Failed to upload image", details: error.message });
+    // Don't expose internal error details to clients
+    res.status(500).json({ error: "Failed to upload image" });
   }
 });
 
 // GET /api/campaigns/:campaignId/images/:imageId/file
 // Serve image file - MUST come before /:entityType/:entityId route to avoid conflicts
-router.get("/:campaignId/images/:imageId/file", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/images/:imageId/file", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, imageId } = req.params;
 
-    const image = db.prepare(`
+    const image = await get(`
       SELECT * FROM images 
-      WHERE id = ? AND campaign_id = ?
-    `).get(imageId, campaignId);
+      WHERE id = $1 AND campaign_id = $2
+    `, [imageId, campaignId]);
 
     if (!image) {
       console.error(`[Images] Image not found: id=${imageId}, campaignId=${campaignId}`);
@@ -134,12 +137,15 @@ router.get("/:campaignId/images/:imageId/file", requireCampaignAccess, (req, res
     const filePath = path.join(__dirname, "../../uploads", image.file_path);
     const resolvedPath = path.resolve(filePath);
     
-    console.log(`[Images] Serving image: id=${imageId}, path=${resolvedPath}, exists=${fs.existsSync(resolvedPath)}`);
-    console.log(`[Images] File stats:`, fs.statSync(resolvedPath));
+    // Security: Prevent path traversal attacks
+    const uploadsDir = path.resolve(path.join(__dirname, "../../uploads"));
+    if (!resolvedPath.startsWith(uploadsDir)) {
+      console.error(`[Images] Path traversal attempt detected: ${resolvedPath}`);
+      return res.status(403).json({ error: "Access denied" });
+    }
     
     if (!fs.existsSync(resolvedPath)) {
       console.error(`[Images] File not found at path: ${resolvedPath}`);
-      console.error(`[Images] Image record:`, image);
       return res.status(404).json({ error: "Image file not found" });
     }
 
@@ -152,26 +158,27 @@ router.get("/:campaignId/images/:imageId/file", requireCampaignAccess, (req, res
     res.sendFile(resolvedPath, (err) => {
       if (err) {
         console.error(`[Images] Error sending file:`, err);
-        res.status(500).json({ error: "Failed to serve image", details: err.message });
+        res.status(500).json({ error: "Failed to serve image" });
       }
     });
   } catch (error) {
     console.error("Error serving image:", error);
-    res.status(500).json({ error: "Failed to serve image", details: error.message });
+    // Don't expose internal error details to clients
+    res.status(500).json({ error: "Failed to serve image" });
   }
 });
 
 // GET /api/campaigns/:campaignId/images/:entityType/:entityId
 // Get all images for a specific entity
-router.get("/:campaignId/images/:entityType/:entityId", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/images/:entityType/:entityId", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, entityType, entityId } = req.params;
 
-    const images = db.prepare(`
+    const images = await all(`
       SELECT * FROM images 
-      WHERE campaign_id = ? AND entity_type = ? AND entity_id = ?
+      WHERE campaign_id = $1 AND entity_type = $2 AND entity_id = $3
       ORDER BY uploaded_at DESC
-    `).all(campaignId, entityType, entityId);
+    `, [campaignId, entityType, entityId]);
 
     res.json(images);
   } catch (error) {
@@ -182,15 +189,15 @@ router.get("/:campaignId/images/:entityType/:entityId", requireCampaignAccess, (
 
 // DELETE /api/campaigns/:campaignId/images/:imageId
 // Delete an image
-router.delete("/:campaignId/images/:imageId", requireCampaignDM, (req, res) => {
+router.delete("/:campaignId/images/:imageId", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId, imageId } = req.params;
 
     // Get image record
-    const image = db.prepare(`
+    const image = await get(`
       SELECT * FROM images 
-      WHERE id = ? AND campaign_id = ?
-    `).get(imageId, campaignId);
+      WHERE id = $1 AND campaign_id = $2
+    `, [imageId, campaignId]);
 
     if (!image) {
       return res.status(404).json({ error: "Image not found" });
@@ -198,17 +205,29 @@ router.delete("/:campaignId/images/:imageId", requireCampaignDM, (req, res) => {
 
     // Delete file from filesystem
     const filePath = path.join(__dirname, "../../uploads", image.file_path);
-    try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+    const resolvedPath = path.resolve(filePath);
+    
+    // Security: Prevent path traversal attacks
+    const uploadsDir = path.resolve(path.join(__dirname, "../../uploads"));
+    if (resolvedPath.startsWith(uploadsDir)) {
+      try {
+        if (fs.existsSync(resolvedPath)) {
+          fs.unlinkSync(resolvedPath);
+        }
+      } catch (fileError) {
+        console.error("Error deleting file:", fileError);
+        // Continue with database deletion even if file deletion fails
       }
-    } catch (fileError) {
-      console.error("Error deleting file:", fileError);
-      // Continue with database deletion even if file deletion fails
+    } else {
+      console.error(`[Images] Path traversal attempt detected: ${resolvedPath}`);
     }
 
     // Delete from database
-    db.prepare("DELETE FROM images WHERE id = ?").run(imageId);
+    const result = await query("DELETE FROM images WHERE id = $1", [imageId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Image not found" });
+    }
 
     res.json({ message: "Image deleted successfully" });
   } catch (error) {

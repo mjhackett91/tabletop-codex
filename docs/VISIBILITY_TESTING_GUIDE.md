@@ -164,33 +164,6 @@ This is the most realistic way to test, as it simulates real-world usage.
 
 ---
 
-## Testing Method 2: Using Dev Role Switcher (Quick Testing)
-
-If you only have one account or want to quickly toggle between roles:
-
-1. **Login with your DM account**
-2. Navigate to any campaign (e.g., `/campaigns/4/characters`)
-3. Look for the **"DEV"** button in the bottom-right corner
-4. Click it to expand the Dev Role Switcher
-5. You can toggle between:
-   - **None** (Actual role - DM)
-   - **DM** (Simulated DM role)
-   - **Player** (Simulated Player role)
-6. When you change roles, the page will reload and you'll see the Player view
-
-### Limitations of Dev Role Switcher:
-- ⚠️ Only works in development mode
-- ⚠️ Only simulates the role - you're still logged in as the same user
-- ⚠️ Some features (like player character assignment) won't work correctly because you're still the DM user
-- ✅ Best for quickly testing visibility filtering
-
-### Use Dev Role Switcher to Test:
-- ✅ Visibility filtering (what players can/can't see)
-- ✅ Permission checks (what actions players can/can't take)
-- ❌ **Don't use it for**: Player character assignment (need real separate accounts)
-
----
-
 ## Test Checklist
 
 ### Campaign Sharing
@@ -252,20 +225,11 @@ If you only have one account or want to quickly toggle between roles:
 
 ### Issue: Player cannot edit their assigned character
 - **Check**: Make sure the character's `player_user_id` matches the player's user ID
-- **Check**: Make sure you're testing with a real player account, not using Dev Role Switcher
+- **Check**: Make sure you're testing with a real player account (not the DM account)
 - **Check**: The character type must be "player" (not "npc" or "antagonist")
-
-### Issue: Dev Role Switcher doesn't change anything
-- **Check**: Make sure you're in development mode (`npm run dev`)
-- **Check**: The page should reload after changing roles
-- **Check**: Check browser console for any errors
 
 ---
 
-## What to Remove Before Production
+## Production Readiness
 
-⚠️ **IMPORTANT**: Before deploying to production, remove the Dev Role Switcher:
-
-1. Delete `/client/src/components/DevRoleSwitcher.jsx`
-2. Remove the import from `/client/src/components/Layout.jsx`
-3. See `docs/REMOVE_DEV_ROLE_SWITCHER.md` for detailed instructions
+✅ **Dev Role Switcher has been removed** - All testing should be done with real user accounts.

@@ -3,8 +3,6 @@ import { Box, Container } from "@mui/material";
 import { useLocation } from "react-router-dom";
 import TopAppBar from "./TopAppBar";
 import Breadcrumbs from "./Breadcrumbs";
-// ⚠️ DEV MODE ONLY - Remove before production!
-import DevRoleSwitcher from "./DevRoleSwitcher";
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -34,9 +32,6 @@ export default function Layout({ children }) {
           </Container>
         )}
       </Box>
-      
-      {/* ⚠️ DEV MODE ONLY - Remove before production! */}
-      {isLoggedIn && !isPublicPage && <DevRoleSwitcher />}
     </Box>
   );
 }

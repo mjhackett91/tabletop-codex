@@ -46,6 +46,7 @@ import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
 import ImageGallery from "../components/ImageGallery";
 import TagSelector from "../components/TagSelector";
+import { sanitizeHTML } from "../utils/sanitize.js";
 
 const ALIGNMENTS = [
   "Lawful Good", "Neutral Good", "Chaotic Good",
@@ -438,7 +439,7 @@ export default function Factions() {
                               "& p": { margin: 0, display: "inline" },
                               "& *": { display: "inline" }
                             }}
-                            dangerouslySetInnerHTML={{ __html: faction.description }}
+                            dangerouslySetInnerHTML={{ __html: sanitizeHTML(faction.description || "") }}
                           />
                         );
                       }
@@ -530,7 +531,7 @@ export default function Factions() {
         <DialogContent dividers>
           <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ mb: 2 }}>
             <Tab label="Details" />
-            <Tab label="Images" disabled={!editingFaction?.id} />
+            <Tab label="Images" />
           </Tabs>
 
           {dialogTab === 0 && (
@@ -631,14 +632,22 @@ export default function Factions() {
           </Box>
           )}
 
-          {dialogTab === 1 && editingFaction?.id && (
+          {dialogTab === 1 && (
             <Box sx={{ pt: 2 }}>
-              <ImageGallery
-                campaignId={campaignId}
-                entityType="faction"
-                entityId={editingFaction.id}
-                onUpdate={fetchFactions}
-              />
+              {editingFaction?.id ? (
+                <ImageGallery
+                  campaignId={campaignId}
+                  entityType="faction"
+                  entityId={editingFaction.id}
+                  onUpdate={fetchFactions}
+                />
+              ) : (
+                <Box sx={{ textAlign: "center", py: 4 }}>
+                  <Typography color="text.secondary">
+                    Save the faction first to upload images.
+                  </Typography>
+                </Box>
+              )}
             </Box>
           )}
         </DialogContent>

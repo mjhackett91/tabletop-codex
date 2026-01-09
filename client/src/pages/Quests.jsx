@@ -776,7 +776,7 @@ export default function Quests() {
             <Tab label="Links" />
             <Tab label="Rewards & Consequences" />
             <Tab label="Milestones" />
-            <Tab label="Images" disabled={!editingQuest?.id} />
+            <Tab label="Images" />
           </Tabs>
 
           <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
@@ -1291,14 +1291,22 @@ export default function Quests() {
               </Box>
             )}
 
-            {dialogTab === 5 && editingQuest?.id && (
+            {dialogTab === 5 && (
               <Box sx={{ pt: 2 }}>
-                <ImageGallery
-                  campaignId={campaignId}
-                  entityType="quest"
-                  entityId={editingQuest.id}
-                  onUpdate={fetchQuests}
-                />
+                {editingQuest?.id ? (
+                  <ImageGallery
+                    campaignId={campaignId}
+                    entityType="quest"
+                    entityId={editingQuest.id}
+                    onUpdate={fetchQuests}
+                  />
+                ) : (
+                  <Box sx={{ textAlign: "center", py: 4 }}>
+                    <Typography color="text.secondary">
+                      Save the quest first to upload images.
+                    </Typography>
+                  </Box>
+                )}
               </Box>
             )}
           </Box>

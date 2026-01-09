@@ -1,21 +1,62 @@
 version: "3.8"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ttc-postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-ttc}
+      - POSTGRES_USER=${POSTGRES_USER:-ttc_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ttc_password_change_in_production}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ttc_user} -d ${POSTGRES_DB:-ttc}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./server
       dockerfile: Dockerfile
     container_name: ttc-backend
     ports:
-      - "5000:5000"
+      - "${BACKEND_PORT:-5000}:5000"
     environment:
       - PORT=5000
-      - NODE_ENV=production
+      - NODE_ENV=${NODE_ENV:-production}
       - DB_PATH=/app/data/codex.db
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-ttc_user}:${POSTGRES_PASSWORD:-ttc_password_change_in_production}@postgres:5432/${POSTGRES_DB:-ttc}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-ttc}
+      - POSTGRES_USER=${POSTGRES_USER:-ttc_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ttc_password_change_in_production}
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      # CORS Configuration
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      # Mailpit SMTP configuration (for local email catching)
+      - SMTP_HOST=${SMTP_HOST:-mailpit}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - EMAIL_FROM=${EMAIL_FROM:-noreply@tabletopcodex.local}
+      - APP_NAME=${APP_NAME:-Table Top Codex}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
@@ -28,10 +69,10 @@ services:
       context: ./client
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=http://backend:5000/api
+        - VITE_API_URL=${VITE_API_URL:-http://backend:5000/api}
     container_name: ttc-frontend
     ports:
-      - "80:80"
+      - "${FRONTEND_PORT:-80}:80"
     depends_on:
       - backend
     restart: unless-stopped
@@ -40,7 +81,7 @@ services:
     image: nginx:alpine
     container_name: ttc-nginx
     ports:
-      - "8080:80"
+      - "${NGINX_PORT:-8080}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./uploads:/usr/share/nginx/html/uploads:ro
@@ -48,3 +89,24 @@ services:
       - frontend
       - backend
     restart: unless-stopped
+
+  # Mailpit - Local SMTP server for catching emails (perfect for self-hosted/development)
+  # View emails at http://YOUR_NAS_IP:${MAILPIT_UI_PORT:-8025}
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: ttc-mailpit
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"  # SMTP port (for sending emails)
+      - "${MAILPIT_UI_PORT:-8025}:8025"  # Web UI port (for viewing emails)
+    restart: unless-stopped
+    environment:
+      - MP_SMTP_AUTH_ACCEPT_ANY=1  # Accept any credentials (fine for local/internal use)
+      - MP_SMTP_AUTH_ALLOW_INSECURE=1
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8025"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres-data:

@@ -1,6 +1,6 @@
 // server/routes/participants.js - Campaign participant management API
 import express from "express";
-import db from "../db.js";
+import { get, all, query } from "../db-pg.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { requireCampaignOwnership, verifyCampaignOwnership } from "../utils/campaignOwnership.js";
 import { getUserCampaignRole, isCampaignDM, hasCampaignAccess, getRole } from "../utils/participantAccess.js";
@@ -15,7 +15,7 @@ router.use(authenticateToken);
  * List all participants in a campaign
  * Requires: DM access
  */
-router.get("/:campaignId/participants", (req, res) => {
+router.get("/:campaignId/participants", async (req, res) => {
   try {
     const { campaignId } = req.params;
     const userId = req.user?.id;
@@ -25,27 +25,25 @@ router.get("/:campaignId/participants", (req, res) => {
     }
 
     // Check if user has access (DM or player can see participants)
-    if (!hasCampaignAccess(campaignId, userId, req)) {
+    if (!(await hasCampaignAccess(campaignId, userId, req))) {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const participants = db
-      .prepare(`
-        SELECT 
-          cp.id,
-          cp.role,
-          cp.joined_at,
-          u.id as user_id,
-          u.username,
-          u.email,
-          c.user_id as campaign_owner_id
-        FROM campaign_participants cp
-        JOIN users u ON cp.user_id = u.id
-        JOIN campaigns c ON cp.campaign_id = c.id
-        WHERE cp.campaign_id = ?
-        ORDER BY cp.role DESC, cp.joined_at ASC
-      `)
-      .all(campaignId);
+    const participants = await all(`
+      SELECT 
+        cp.id,
+        cp.role,
+        cp.joined_at,
+        u.id as user_id,
+        u.username,
+        u.email,
+        c.user_id as campaign_owner_id
+      FROM campaign_participants cp
+      JOIN users u ON cp.user_id = u.id
+      JOIN campaigns c ON cp.campaign_id = c.id
+      WHERE cp.campaign_id = $1
+      ORDER BY cp.role DESC, cp.joined_at ASC
+    `, [campaignId]);
 
     // Mark campaign owner
     const participantsWithOwner = participants.map(p => ({
@@ -65,7 +63,7 @@ router.get("/:campaignId/participants", (req, res) => {
  * Invite a user to the campaign by email
  * Requires: DM access
  */
-router.post("/:campaignId/participants/invite", requireCampaignOwnership, (req, res) => {
+router.post("/:campaignId/participants/invite", requireCampaignOwnership, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { email, role = "player" } = req.body;
@@ -80,43 +78,43 @@ router.post("/:campaignId/participants/invite", requireCampaignOwnership, (req, 
     }
 
     // Find user by email
-    const user = db
-      .prepare("SELECT id, username, email FROM users WHERE email = ?")
-      .get(email.trim().toLowerCase());
+    const user = await get(
+      "SELECT id, username, email FROM users WHERE email = $1",
+      [email.trim().toLowerCase()]
+    );
 
     if (!user) {
       return res.status(404).json({ error: "User not found with that email" });
     }
 
     // Check if user is already a participant
-    const existing = db
-      .prepare("SELECT id FROM campaign_participants WHERE campaign_id = ? AND user_id = ?")
-      .get(campaignId, user.id);
+    const existing = await get(
+      "SELECT id FROM campaign_participants WHERE campaign_id = $1 AND user_id = $2",
+      [campaignId, user.id]
+    );
 
     if (existing) {
       return res.status(400).json({ error: "User is already a participant in this campaign" });
     }
 
     // Add participant
-    db.prepare(`
+    await query(`
       INSERT INTO campaign_participants (campaign_id, user_id, role, invited_by)
-      VALUES (?, ?, ?, ?)
-    `).run(campaignId, user.id, role, userId);
+      VALUES ($1, $2, $3, $4)
+    `, [campaignId, user.id, role, userId]);
 
-    const newParticipant = db
-      .prepare(`
-        SELECT 
-          cp.id,
-          cp.role,
-          cp.joined_at,
-          u.id as user_id,
-          u.username,
-          u.email
-        FROM campaign_participants cp
-        JOIN users u ON cp.user_id = u.id
-        WHERE cp.campaign_id = ? AND cp.user_id = ?
-      `)
-      .get(campaignId, user.id);
+    const newParticipant = await get(`
+      SELECT 
+        cp.id,
+        cp.role,
+        cp.joined_at,
+        u.id as user_id,
+        u.username,
+        u.email
+      FROM campaign_participants cp
+      JOIN users u ON cp.user_id = u.id
+      WHERE cp.campaign_id = $1 AND cp.user_id = $2
+    `, [campaignId, user.id]);
 
     res.status(201).json({
       message: `Successfully invited ${user.username} to the campaign`,
@@ -133,7 +131,7 @@ router.post("/:campaignId/participants/invite", requireCampaignOwnership, (req, 
  * Update participant role
  * Requires: DM access, cannot change owner's role
  */
-router.put("/:campaignId/participants/:participantId/role", requireCampaignOwnership, (req, res) => {
+router.put("/:campaignId/participants/:participantId/role", requireCampaignOwnership, async (req, res) => {
   try {
     const { campaignId, participantId } = req.params;
     const { role } = req.body;
@@ -143,14 +141,12 @@ router.put("/:campaignId/participants/:participantId/role", requireCampaignOwner
     }
 
     // Get participant
-    const participant = db
-      .prepare(`
-        SELECT cp.*, c.user_id as campaign_owner_id
-        FROM campaign_participants cp
-        JOIN campaigns c ON cp.campaign_id = c.id
-        WHERE cp.id = ? AND cp.campaign_id = ?
-      `)
-      .get(participantId, campaignId);
+    const participant = await get(`
+      SELECT cp.*, c.user_id as campaign_owner_id
+      FROM campaign_participants cp
+      JOIN campaigns c ON cp.campaign_id = c.id
+      WHERE cp.id = $1 AND cp.campaign_id = $2
+    `, [participantId, campaignId]);
 
     if (!participant) {
       return res.status(404).json({ error: "Participant not found" });
@@ -162,26 +158,24 @@ router.put("/:campaignId/participants/:participantId/role", requireCampaignOwner
     }
 
     // Update role
-    db.prepare(`
+    await query(`
       UPDATE campaign_participants
-      SET role = ?
-      WHERE id = ? AND campaign_id = ?
-    `).run(role, participantId, campaignId);
+      SET role = $1
+      WHERE id = $2 AND campaign_id = $3
+    `, [role, participantId, campaignId]);
 
-    const updated = db
-      .prepare(`
-        SELECT 
-          cp.id,
-          cp.role,
-          cp.joined_at,
-          u.id as user_id,
-          u.username,
-          u.email
-        FROM campaign_participants cp
-        JOIN users u ON cp.user_id = u.id
-        WHERE cp.id = ?
-      `)
-      .get(participantId);
+    const updated = await get(`
+      SELECT 
+        cp.id,
+        cp.role,
+        cp.joined_at,
+        u.id as user_id,
+        u.username,
+        u.email
+      FROM campaign_participants cp
+      JOIN users u ON cp.user_id = u.id
+      WHERE cp.id = $1
+    `, [participantId]);
 
     res.json({
       message: "Participant role updated successfully",
@@ -198,19 +192,17 @@ router.put("/:campaignId/participants/:participantId/role", requireCampaignOwner
  * Remove a participant from the campaign
  * Requires: DM access, cannot remove owner
  */
-router.delete("/:campaignId/participants/:participantId", requireCampaignOwnership, (req, res) => {
+router.delete("/:campaignId/participants/:participantId", requireCampaignOwnership, async (req, res) => {
   try {
     const { campaignId, participantId } = req.params;
 
     // Get participant
-    const participant = db
-      .prepare(`
-        SELECT cp.*, c.user_id as campaign_owner_id
-        FROM campaign_participants cp
-        JOIN campaigns c ON cp.campaign_id = c.id
-        WHERE cp.id = ? AND cp.campaign_id = ?
-      `)
-      .get(participantId, campaignId);
+    const participant = await get(`
+      SELECT cp.*, c.user_id as campaign_owner_id
+      FROM campaign_participants cp
+      JOIN campaigns c ON cp.campaign_id = c.id
+      WHERE cp.id = $1 AND cp.campaign_id = $2
+    `, [participantId, campaignId]);
 
     if (!participant) {
       return res.status(404).json({ error: "Participant not found" });
@@ -222,8 +214,14 @@ router.delete("/:campaignId/participants/:participantId", requireCampaignOwnersh
     }
 
     // Remove participant
-    db.prepare("DELETE FROM campaign_participants WHERE id = ? AND campaign_id = ?")
-      .run(participantId, campaignId);
+    const result = await query(
+      "DELETE FROM campaign_participants WHERE id = $1 AND campaign_id = $2",
+      [participantId, campaignId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Participant not found" });
+    }
 
     res.json({ message: "Participant removed successfully" });
   } catch (error) {
@@ -236,7 +234,7 @@ router.delete("/:campaignId/participants/:participantId", requireCampaignOwnersh
  * GET /api/campaigns/:campaignId/my-role
  * Get current user's role in the campaign
  */
-router.get("/:campaignId/my-role", (req, res) => {
+router.get("/:campaignId/my-role", async (req, res) => {
   try {
     const { campaignId } = req.params;
     const userId = req.user?.id;
@@ -256,7 +254,7 @@ router.get("/:campaignId/my-role", (req, res) => {
     }
 
     // Use getRole to respect dev simulation
-    const role = getRole(campaignIdInt, userId, req);
+    const role = await getRole(campaignIdInt, userId, req);
 
     if (!role) {
       return res.status(403).json({ 

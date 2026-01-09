@@ -1,6 +1,6 @@
 // server/routes/characters.js - Characters API (Player Characters, NPCs, Antagonists)
 import express from "express";
-import db from "../db.js";
+import { get, all, query } from "../db-pg.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { requireCampaignAccess, requireCampaignDM } from "../middleware/participantAccess.js";
 
@@ -10,74 +10,68 @@ const router = express.Router({ mergeParams: true });
 router.use(authenticateToken);
 
 // GET /api/campaigns/:campaignId/characters
-router.get("/:campaignId/characters", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/characters", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { type, search } = req.query;
     const userRole = req.userCampaignRole;
 
     const userId = req.user.id;
-    let query = `
+    let queryText = `
       SELECT c.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM characters c
       LEFT JOIN users creator ON c.created_by_user_id = creator.id
       LEFT JOIN users updater ON c.last_updated_by_user_id = updater.id
-      WHERE c.campaign_id = ?
+      WHERE c.campaign_id = $1
     `;
     const params = [campaignId];
+    let paramIndex = 2;
 
     // Filter by visibility: players see player-visible OR their own assigned characters
     // DMs see all except hidden
     if (userRole === "player") {
-      query += " AND (c.visibility = 'player-visible' OR (c.type = 'player' AND c.player_user_id = ?))";
+      queryText += ` AND (c.visibility = 'player-visible' OR (c.type = 'player' AND c.player_user_id = $${paramIndex}))`;
       params.push(userId);
+      paramIndex++;
     } else if (userRole === "dm") {
-      query += " AND c.visibility != 'hidden'";
+      queryText += " AND c.visibility != 'hidden'";
     } else {
       // Fallback: no access
       return res.status(403).json({ error: "Access denied" });
     }
 
     if (type) {
-      query += " AND c.type = ?";
+      queryText += ` AND c.type = $${paramIndex}`;
       params.push(type);
+      paramIndex++;
     }
 
     if (search) {
-      query += " AND (c.name LIKE ? OR c.description LIKE ?)";
+      queryText += ` AND (c.name LIKE $${paramIndex} OR c.description LIKE $${paramIndex + 1})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
+      paramIndex += 2;
     }
 
-    query += " ORDER BY c.type, c.name";
+    queryText += " ORDER BY c.type, c.name";
 
-    const characters = db.prepare(query).all(...params);
+    const characters = await all(queryText, params);
 
-    // Get tags for each character - ensure type consistency
-    const charactersWithTags = characters.map(char => {
+    // Get tags for each character
+    const charactersWithTags = await Promise.all(characters.map(async (char) => {
       try {
-        // Ensure char.id is treated as integer for consistency with how we save tags
         const charId = typeof char.id === 'number' ? char.id : parseInt(char.id, 10);
         
-        // Debug: Check what's in entity_tags for this character (try both types)
-        const entityTagsCheckInt = db.prepare(`
-          SELECT * FROM entity_tags 
-          WHERE entity_type = 'character' AND entity_id = ?
-        `).all(charId);
-        console.log(`[Characters GET] Character "${char.name}" (ID: ${char.id}, parsed: ${charId}, type: ${typeof char.id}) - entity_tags check (int):`, entityTagsCheckInt);
-        
-        // Get tags for this character - use integer ID to match how we save
-        const tags = db.prepare(`
+        // Get tags for this character
+        const tags = await all(`
           SELECT t.*
           FROM tags t
           INNER JOIN entity_tags et ON t.id = et.tag_id
-          WHERE et.entity_type = 'character' AND et.entity_id = ? AND t.campaign_id = ?
+          WHERE et.entity_type = 'character' AND et.entity_id = $1 AND t.campaign_id = $2
           ORDER BY t.name ASC
-        `).all(charId, parseInt(campaignId, 10));
-        
-        console.log(`[Characters GET] Character "${char.name}" (ID: ${char.id}) - tags found:`, tags.length, tags.map(t => t.name));
+        `, [charId, parseInt(campaignId, 10)]);
 
         return {
           ...char,
@@ -92,7 +86,7 @@ router.get("/:campaignId/characters", requireCampaignAccess, (req, res) => {
           tags: []
         };
       }
-    });
+    }));
 
     res.json(charactersWithTags);
   } catch (error) {
@@ -102,48 +96,50 @@ router.get("/:campaignId/characters", requireCampaignAccess, (req, res) => {
 });
 
 // GET /api/campaigns/:campaignId/characters/:id
-router.get("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/characters/:id", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const userRole = req.userCampaignRole;
 
     const userId = req.user.id;
-    let query = `
+    let queryText = `
       SELECT c.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM characters c
       LEFT JOIN users creator ON c.created_by_user_id = creator.id
       LEFT JOIN users updater ON c.last_updated_by_user_id = updater.id
-      WHERE c.id = ? AND c.campaign_id = ?
+      WHERE c.id = $1 AND c.campaign_id = $2
     `;
     const params = [id, campaignId];
+    let paramIndex = 3;
 
     // Filter by visibility: players see player-visible OR their own assigned characters
     // DMs see all except hidden
     if (userRole === "player") {
-      query += " AND (c.visibility = 'player-visible' OR (c.type = 'player' AND c.player_user_id = ?))";
+      queryText += ` AND (c.visibility = 'player-visible' OR (c.type = 'player' AND c.player_user_id = $${paramIndex}))`;
       params.push(userId);
+      paramIndex++;
     } else if (userRole === "dm") {
-      query += " AND c.visibility != 'hidden'";
+      queryText += " AND c.visibility != 'hidden'";
     } else {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const character = db.prepare(query).get(...params);
+    const character = await get(queryText, params);
 
     if (!character) {
       return res.status(404).json({ error: "Character not found" });
     }
 
     // Get tags for this character
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'character' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'character' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(character.id, campaignId);
+    `, [character.id, campaignId]);
 
     res.json({
       ...character,
@@ -158,7 +154,7 @@ router.get("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
 
 // POST /api/campaigns/:campaignId/characters
 // DMs can create any character, players can create their own player characters
-router.post("/:campaignId/characters", requireCampaignAccess, (req, res) => {
+router.post("/:campaignId/characters", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { type, name, description, character_sheet, alignment, visibility, player_user_id } = req.body;
@@ -196,11 +192,11 @@ router.post("/:campaignId/characters", requireCampaignAccess, (req, res) => {
 
     const sheetJson = character_sheet ? JSON.stringify(character_sheet) : null;
 
-    const stmt = db.prepare(`
+    const result = await query(`
       INSERT INTO characters (campaign_id, type, name, description, character_sheet, alignment, visibility, player_user_id, created_by_user_id, last_updated_by_user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const result = stmt.run(
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id
+    `, [
       campaignId,
       type,
       name.trim(),
@@ -211,28 +207,28 @@ router.post("/:campaignId/characters", requireCampaignAccess, (req, res) => {
       finalPlayerUserId,
       userId, // created_by_user_id
       userId  // last_updated_by_user_id
-    );
+    ]);
 
-    const newCharacter = db
-      .prepare(`
-        SELECT c.*, 
-               creator.username as created_by_username, creator.email as created_by_email,
-               updater.username as last_updated_by_username, updater.email as last_updated_by_email
-        FROM characters c
-        LEFT JOIN users creator ON c.created_by_user_id = creator.id
-        LEFT JOIN users updater ON c.last_updated_by_user_id = updater.id
-        WHERE c.id = ?
-      `)
-      .get(result.lastInsertRowid);
+    const characterId = result.rows[0].id;
+
+    const newCharacter = await get(`
+      SELECT c.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM characters c
+      LEFT JOIN users creator ON c.created_by_user_id = creator.id
+      LEFT JOIN users updater ON c.last_updated_by_user_id = updater.id
+      WHERE c.id = $1
+    `, [characterId]);
 
     // Get tags for this character
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'character' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'character' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(newCharacter.id, campaignId);
+    `, [characterId, campaignId]);
 
     res.status(201).json({
       ...newCharacter,
@@ -247,7 +243,7 @@ router.post("/:campaignId/characters", requireCampaignAccess, (req, res) => {
 
 // PUT /api/campaigns/:campaignId/characters/:id
 // DMs can edit any character, players can only edit their own assigned player characters
-router.put("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
+router.put("/:campaignId/characters/:id", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const { type, name, description, character_sheet, alignment, visibility, player_user_id } = req.body;
@@ -255,7 +251,7 @@ router.put("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
     const userRole = req.userCampaignRole;
 
     // Check if character exists and get current data
-    const existing = db.prepare("SELECT * FROM characters WHERE id = ? AND campaign_id = ?").get(id, campaignId);
+    const existing = await get("SELECT * FROM characters WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
     if (!existing) {
       return res.status(404).json({ error: "Character not found" });
     }
@@ -273,12 +269,11 @@ router.put("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
         // Players editing their own player character can update description, character_sheet, and visibility
         const sheetJson = character_sheet ? JSON.stringify(character_sheet) : null;
         const finalVisibility = visibility || existing.visibility || "dm-only";
-        const stmt = db.prepare(`
+        const result = await query(`
           UPDATE characters 
-          SET description = ?, character_sheet = ?, visibility = ?, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = ?
-          WHERE id = ? AND campaign_id = ? AND type = 'player' AND player_user_id = ?
-        `);
-        const result = stmt.run(
+          SET description = $1, character_sheet = $2, visibility = $3, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = $4
+          WHERE id = $5 AND campaign_id = $6 AND type = 'player' AND player_user_id = $7
+        `, [
           description?.trim() || null,
           sheetJson,
           finalVisibility,
@@ -286,9 +281,9 @@ router.put("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
           id,
           campaignId,
           userId
-        );
+        ]);
 
-        if (result.changes === 0) {
+        if (result.rowCount === 0) {
           return res.status(404).json({ error: "Character not found or access denied" });
         }
       } else if (isOwnNPC) {
@@ -297,12 +292,11 @@ router.put("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
           return res.status(400).json({ error: "Character name is required" });
         }
         const sheetJson = character_sheet ? JSON.stringify(character_sheet) : null;
-        const stmt = db.prepare(`
+        const result = await query(`
           UPDATE characters 
-          SET name = ?, description = ?, character_sheet = ?, alignment = ?, visibility = ?, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = ?
-          WHERE id = ? AND campaign_id = ? AND (type = 'npc' OR type = 'antagonist') AND created_by_user_id = ?
-        `);
-        const result = stmt.run(
+          SET name = $1, description = $2, character_sheet = $3, alignment = $4, visibility = $5, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = $6
+          WHERE id = $7 AND campaign_id = $8 AND (type = 'npc' OR type = 'antagonist') AND created_by_user_id = $9
+        `, [
           name.trim(),
           description?.trim() || null,
           sheetJson,
@@ -312,9 +306,9 @@ router.put("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
           id,
           campaignId,
           userId
-        );
+        ]);
 
-        if (result.changes === 0) {
+        if (result.rowCount === 0) {
           return res.status(404).json({ error: "Character not found or access denied" });
         }
       }
@@ -326,12 +320,11 @@ router.put("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
 
       const sheetJson = character_sheet ? JSON.stringify(character_sheet) : null;
 
-      const stmt = db.prepare(`
+      const result = await query(`
         UPDATE characters 
-        SET type = ?, name = ?, description = ?, character_sheet = ?, alignment = ?, visibility = ?, player_user_id = ?, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = ?
-        WHERE id = ? AND campaign_id = ?
-      `);
-      const result = stmt.run(
+        SET type = $1, name = $2, description = $3, character_sheet = $4, alignment = $5, visibility = $6, player_user_id = $7, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = $8
+        WHERE id = $9 AND campaign_id = $10
+      `, [
         type || existing.type,
         name.trim(),
         description?.trim() || null,
@@ -342,33 +335,31 @@ router.put("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
         userId, // last_updated_by_user_id
         id,
         campaignId
-      );
+      ]);
 
-      if (result.changes === 0) {
+      if (result.rowCount === 0) {
         return res.status(404).json({ error: "Character not found" });
       }
     }
 
-    const updated = db
-      .prepare(`
-        SELECT c.*, 
-               creator.username as created_by_username, creator.email as created_by_email,
-               updater.username as last_updated_by_username, updater.email as last_updated_by_email
-        FROM characters c
-        LEFT JOIN users creator ON c.created_by_user_id = creator.id
-        LEFT JOIN users updater ON c.last_updated_by_user_id = updater.id
-        WHERE c.id = ?
-      `)
-      .get(id);
+    const updated = await get(`
+      SELECT c.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM characters c
+      LEFT JOIN users creator ON c.created_by_user_id = creator.id
+      LEFT JOIN users updater ON c.last_updated_by_user_id = updater.id
+      WHERE c.id = $1
+    `, [id]);
 
     // Get tags for this character
-    const tags = db.prepare(`
+    const tags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'character' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'character' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(id, campaignId);
+    `, [id, campaignId]);
 
     res.json({
       ...updated,
@@ -383,14 +374,14 @@ router.put("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
 
 // DELETE /api/campaigns/:campaignId/characters/:id
 // DMs can delete any character, players can delete NPCs/antagonists they created
-router.delete("/:campaignId/characters/:id", requireCampaignAccess, (req, res) => {
+router.delete("/:campaignId/characters/:id", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const userId = req.user.id;
     const userRole = req.userCampaignRole;
 
     // Check if character exists
-    const character = db.prepare("SELECT * FROM characters WHERE id = ? AND campaign_id = ?").get(id, campaignId);
+    const character = await get("SELECT * FROM characters WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
     if (!character) {
       return res.status(404).json({ error: "Character not found" });
     }
@@ -403,10 +394,9 @@ router.delete("/:campaignId/characters/:id", requireCampaignAccess, (req, res) =
       }
     }
 
-    const stmt = db.prepare("DELETE FROM characters WHERE id = ? AND campaign_id = ?");
-    const result = stmt.run(id, campaignId);
+    const result = await query("DELETE FROM characters WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Character not found" });
     }
 

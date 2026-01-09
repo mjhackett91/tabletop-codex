@@ -1,6 +1,7 @@
 // client/src/pages/WorldInfo.jsx - World Info management page
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "react-router-dom";
+import { sanitizeHTML } from "../utils/sanitize.js";
 import {
   Box,
   Typography,
@@ -432,7 +433,7 @@ export default function WorldInfo() {
                         "& *": { display: "inline" }
                       }}
                       dangerouslySetInnerHTML={{ 
-                        __html: info.content || "<span style='color: #bdbdbd'>No content</span>" 
+                        __html: sanitizeHTML(info.content || "<span style='color: #bdbdbd'>No content</span>")
                       }}
                     />
                   </TableCell>
@@ -503,7 +504,7 @@ export default function WorldInfo() {
         <DialogContent dividers>
           <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ mb: 2 }}>
             <Tab label="Details" />
-            <Tab label="Images" disabled={!editingWorldInfo?.id} />
+            <Tab label="Images" />
           </Tabs>
 
           {dialogTab === 0 && (
@@ -594,14 +595,22 @@ export default function WorldInfo() {
           </Box>
           )}
 
-          {dialogTab === 1 && editingWorldInfo?.id && (
+          {dialogTab === 1 && (
             <Box sx={{ pt: 2 }}>
-              <ImageGallery
-                campaignId={campaignId}
-                entityType="world_info"
-                entityId={editingWorldInfo.id}
-                onUpdate={fetchWorldInfo}
-              />
+              {editingWorldInfo?.id ? (
+                <ImageGallery
+                  campaignId={campaignId}
+                  entityType="world_info"
+                  entityId={editingWorldInfo.id}
+                  onUpdate={fetchWorldInfo}
+                />
+              ) : (
+                <Box sx={{ textAlign: "center", py: 4 }}>
+                  <Typography color="text.secondary">
+                    Save the world info entry first to upload images.
+                  </Typography>
+                </Box>
+              )}
             </Box>
           )}
         </DialogContent>

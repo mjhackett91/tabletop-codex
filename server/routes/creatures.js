@@ -1,6 +1,6 @@
 // server/routes/creatures.js - Creatures API (D&D 5e-style statblocks)
 import express from "express";
-import db from "../db.js";
+import { get, all, query } from "../db-pg.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { requireCampaignAccess, requireCampaignDM } from "../middleware/participantAccess.js";
 import { filterVisibleEntities, sanitizeEntityForRole } from "../utils/participantAccess.js";
@@ -27,68 +27,73 @@ const stringifyJSONField = (value) => {
 };
 
 // GET /api/campaigns/:campaignId/creatures
-router.get("/:campaignId/creatures", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/creatures", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { search, creatureType, challengeRating, visibility } = req.query;
     const userRole = req.userCampaignRole;
 
-    let query = `
+    let queryText = `
       SELECT c.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM creatures c
       LEFT JOIN users creator ON c.created_by_user_id = creator.id
       LEFT JOIN users updater ON c.last_updated_by_user_id = updater.id
-      WHERE c.campaign_id = ?
+      WHERE c.campaign_id = $1
     `;
     const params = [campaignId];
+    let paramIndex = 2;
 
     // Filter by visibility: players see player-visible, DMs see all except hidden
     if (userRole === "player") {
-      query += " AND c.visibility = 'player-visible'";
+      queryText += " AND c.visibility = 'player-visible'";
     } else if (userRole === "dm") {
-      query += " AND c.visibility != 'hidden'";
+      queryText += " AND c.visibility != 'hidden'";
     } else {
       return res.status(403).json({ error: "Access denied" });
     }
 
     if (search) {
-      query += " AND (c.name LIKE ? OR c.short_description LIKE ?)";
+      queryText += ` AND (c.name LIKE $${paramIndex} OR c.short_description LIKE $${paramIndex + 1})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
+      paramIndex += 2;
     }
 
     if (creatureType) {
-      query += " AND c.creature_type = ?";
+      queryText += ` AND c.creature_type = $${paramIndex}`;
       params.push(creatureType);
+      paramIndex++;
     }
 
     if (challengeRating) {
-      query += " AND c.challenge_rating = ?";
+      queryText += ` AND c.challenge_rating = $${paramIndex}`;
       params.push(challengeRating);
+      paramIndex++;
     }
 
     if (visibility && userRole === "dm") {
-      query += " AND c.visibility = ?";
+      queryText += ` AND c.visibility = $${paramIndex}`;
       params.push(visibility);
+      paramIndex++;
     }
 
-    query += " ORDER BY c.name ASC";
+    queryText += " ORDER BY c.name ASC";
 
-    const creatures = db.prepare(query).all(...params);
+    const creatures = await all(queryText, params);
 
     // Parse JSON fields and filter/sanitize for role, and get tags
-    const processedCreatures = creatures.map(creature => {
+    const processedCreatures = await Promise.all(creatures.map(async (creature) => {
       try {
         // Get tags for this creature from entity_tags
-        const tags = db.prepare(`
+        const tags = await all(`
           SELECT t.*
           FROM tags t
           INNER JOIN entity_tags et ON t.id = et.tag_id
-          WHERE et.entity_type = 'creature' AND et.entity_id = ? AND t.campaign_id = ?
+          WHERE et.entity_type = 'creature' AND et.entity_id = $1 AND t.campaign_id = $2
           ORDER BY t.name ASC
-        `).all(creature.id, campaignId);
+        `, [creature.id, campaignId]);
 
         const processed = {
           ...creature,
@@ -129,7 +134,7 @@ router.get("/:campaignId/creatures", requireCampaignAccess, (req, res) => {
         };
         return sanitizeEntityForRole(processed, userRole);
       }
-    });
+    }));
 
     res.json(processedCreatures);
   } catch (error) {
@@ -139,20 +144,20 @@ router.get("/:campaignId/creatures", requireCampaignAccess, (req, res) => {
 });
 
 // GET /api/campaigns/:campaignId/creatures/:id
-router.get("/:campaignId/creatures/:id", requireCampaignAccess, (req, res) => {
+router.get("/:campaignId/creatures/:id", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const userRole = req.userCampaignRole;
 
-    const creature = db.prepare(`
+    const creature = await get(`
       SELECT c.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM creatures c
       LEFT JOIN users creator ON c.created_by_user_id = creator.id
       LEFT JOIN users updater ON c.last_updated_by_user_id = updater.id
-      WHERE c.id = ? AND c.campaign_id = ?
-    `).get(id, campaignId);
+      WHERE c.id = $1 AND c.campaign_id = $2
+    `, [id, campaignId]);
 
     if (!creature) {
       return res.status(404).json({ error: "Creature not found" });
@@ -167,13 +172,13 @@ router.get("/:campaignId/creatures/:id", requireCampaignAccess, (req, res) => {
     }
 
     // Get tags for this creature from entity_tags
-    const creatureTags = db.prepare(`
+    const creatureTags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'creature' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'creature' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(creature.id, campaignId);
+    `, [creature.id, campaignId]);
 
     // Parse JSON fields
     const processed = {
@@ -202,7 +207,7 @@ router.get("/:campaignId/creatures/:id", requireCampaignAccess, (req, res) => {
 });
 
 // POST /api/campaigns/:campaignId/creatures
-router.post("/:campaignId/creatures", requireCampaignDM, (req, res) => {
+router.post("/:campaignId/creatures", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId } = req.params;
     const userId = req.user.id;
@@ -263,9 +268,9 @@ router.post("/:campaignId/creatures", requireCampaignDM, (req, res) => {
       return res.status(400).json({ error: "All ability scores (str, dex, con, int, wis, cha) are required" });
     }
 
-    const result = db.prepare(`
+    const result = await query(`
       INSERT INTO creatures (
-        campaign_id, name, source_type, visibility, tags,
+        campaign_id, name, source_type, visibility,
         size, creature_type, subtype, alignment, challenge_rating, proficiency_bonus,
         armor_class, hit_points, hit_dice,
         damage_vulnerabilities, damage_resistances, damage_immunities, condition_immunities,
@@ -276,13 +281,13 @@ router.post("/:campaignId/creatures", requireCampaignDM, (req, res) => {
         short_description, appearance_rich_text, lore_rich_text, tactics_rich_text, dm_notes_rich_text,
         linked_entities,
         created_by_user_id, last_updated_by_user_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+      RETURNING id
+    `, [
       campaignId,
       name.trim(),
       sourceType,
       visibility,
-      stringifyJSONField(tags),
       size,
       creatureType,
       subtype || null,
@@ -315,26 +320,28 @@ router.post("/:campaignId/creatures", requireCampaignDM, (req, res) => {
       stringifyJSONField(linkedEntities),
       userId,
       userId
-    );
+    ]);
 
-    const newCreature = db.prepare(`
+    const creatureId = result.rows[0].id;
+
+    const newCreature = await get(`
       SELECT c.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM creatures c
       LEFT JOIN users creator ON c.created_by_user_id = creator.id
       LEFT JOIN users updater ON c.last_updated_by_user_id = updater.id
-      WHERE c.id = ?
-    `).get(result.lastInsertRowid);
+      WHERE c.id = $1
+    `, [creatureId]);
 
     // Get tags for this creature from entity_tags
-    const creatureTags = db.prepare(`
+    const creatureTags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'creature' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'creature' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(newCreature.id, campaignId);
+    `, [creatureId, campaignId]);
 
     // Parse JSON fields
     const processed = {
@@ -364,7 +371,7 @@ router.post("/:campaignId/creatures", requireCampaignDM, (req, res) => {
 });
 
 // PUT /api/campaigns/:campaignId/creatures/:id
-router.put("/:campaignId/creatures/:id", requireCampaignDM, (req, res) => {
+router.put("/:campaignId/creatures/:id", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const userId = req.user.id;
@@ -406,7 +413,7 @@ router.put("/:campaignId/creatures/:id", requireCampaignDM, (req, res) => {
     } = req.body;
 
     // Check if creature exists
-    const existing = db.prepare("SELECT id FROM creatures WHERE id = ? AND campaign_id = ?").get(id, campaignId);
+    const existing = await get("SELECT id FROM creatures WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
     if (!existing) {
       return res.status(404).json({ error: "Creature not found" });
     }
@@ -428,72 +435,79 @@ router.put("/:campaignId/creatures/:id", requireCampaignDM, (req, res) => {
     // Build update query dynamically
     const updates = [];
     const params = [];
+    let paramIndex = 1;
 
-    if (name !== undefined) { updates.push("name = ?"); params.push(name.trim()); }
-    if (sourceType !== undefined) { updates.push("source_type = ?"); params.push(sourceType); }
-    if (visibility !== undefined) { updates.push("visibility = ?"); params.push(visibility); }
-    if (tags !== undefined) { updates.push("tags = ?"); params.push(stringifyJSONField(tags)); }
-    if (size !== undefined) { updates.push("size = ?"); params.push(size); }
-    if (creatureType !== undefined) { updates.push("creature_type = ?"); params.push(creatureType); }
-    if (subtype !== undefined) { updates.push("subtype = ?"); params.push(subtype || null); }
-    if (alignment !== undefined) { updates.push("alignment = ?"); params.push(alignment || null); }
-    if (challengeRating !== undefined) { updates.push("challenge_rating = ?"); params.push(challengeRating || null); }
-    if (proficiencyBonus !== undefined) { updates.push("proficiency_bonus = ?"); params.push(proficiencyBonus || null); }
-    if (armorClass !== undefined) { updates.push("armor_class = ?"); params.push(stringifyJSONField(armorClass)); }
-    if (hitPoints !== undefined) { updates.push("hit_points = ?"); params.push(stringifyJSONField(hitPoints)); }
-    if (hitDice !== undefined) { updates.push("hit_dice = ?"); params.push(hitDice || null); }
-    if (damageVulnerabilities !== undefined) { updates.push("damage_vulnerabilities = ?"); params.push(damageVulnerabilities || null); }
-    if (damageResistances !== undefined) { updates.push("damage_resistances = ?"); params.push(damageResistances || null); }
-    if (damageImmunities !== undefined) { updates.push("damage_immunities = ?"); params.push(damageImmunities || null); }
-    if (conditionImmunities !== undefined) { updates.push("condition_immunities = ?"); params.push(conditionImmunities || null); }
-    if (speeds !== undefined) { updates.push("speeds = ?"); params.push(stringifyJSONField(speeds)); }
-    if (senses !== undefined) { updates.push("senses = ?"); params.push(stringifyJSONField(senses)); }
-    if (languages !== undefined) { updates.push("languages = ?"); params.push(languages || null); }
-    if (abilities !== undefined) { updates.push("abilities = ?"); params.push(stringifyJSONField(abilities)); }
-    if (savingThrows !== undefined) { updates.push("saving_throws = ?"); params.push(stringifyJSONField(savingThrows)); }
-    if (skills !== undefined) { updates.push("skills = ?"); params.push(stringifyJSONField(skills)); }
-    if (traits !== undefined) { updates.push("traits = ?"); params.push(stringifyJSONField(traits)); }
-    if (actions !== undefined) { updates.push("actions = ?"); params.push(stringifyJSONField(actions)); }
-    if (legendaryActionsMeta !== undefined) { updates.push("legendary_actions_meta = ?"); params.push(stringifyJSONField(legendaryActionsMeta)); }
-    if (lairActions !== undefined) { updates.push("lair_actions = ?"); params.push(stringifyJSONField(lairActions)); }
-    if (spellcasting !== undefined) { updates.push("spellcasting = ?"); params.push(stringifyJSONField(spellcasting)); }
-    if (shortDescription !== undefined) { updates.push("short_description = ?"); params.push(shortDescription || null); }
-    if (appearanceRichText !== undefined) { updates.push("appearance_rich_text = ?"); params.push(appearanceRichText || null); }
-    if (loreRichText !== undefined) { updates.push("lore_rich_text = ?"); params.push(loreRichText || null); }
-    if (tacticsRichText !== undefined) { updates.push("tactics_rich_text = ?"); params.push(tacticsRichText || null); }
-    if (dmNotesRichText !== undefined) { updates.push("dm_notes_rich_text = ?"); params.push(dmNotesRichText || null); }
-    if (linkedEntities !== undefined) { updates.push("linked_entities = ?"); params.push(stringifyJSONField(linkedEntities)); }
+    if (name !== undefined) { updates.push(`name = $${paramIndex}`); params.push(name.trim()); paramIndex++; }
+    if (sourceType !== undefined) { updates.push(`source_type = $${paramIndex}`); params.push(sourceType); paramIndex++; }
+    if (visibility !== undefined) { updates.push(`visibility = $${paramIndex}`); params.push(visibility); paramIndex++; }
+    if (tags !== undefined) { updates.push(`tags = $${paramIndex}`); params.push(stringifyJSONField(tags)); paramIndex++; }
+    if (size !== undefined) { updates.push(`size = $${paramIndex}`); params.push(size); paramIndex++; }
+    if (creatureType !== undefined) { updates.push(`creature_type = $${paramIndex}`); params.push(creatureType); paramIndex++; }
+    if (subtype !== undefined) { updates.push(`subtype = $${paramIndex}`); params.push(subtype || null); paramIndex++; }
+    if (alignment !== undefined) { updates.push(`alignment = $${paramIndex}`); params.push(alignment || null); paramIndex++; }
+    if (challengeRating !== undefined) { updates.push(`challenge_rating = $${paramIndex}`); params.push(challengeRating || null); paramIndex++; }
+    if (proficiencyBonus !== undefined) { updates.push(`proficiency_bonus = $${paramIndex}`); params.push(proficiencyBonus || null); paramIndex++; }
+    if (armorClass !== undefined) { updates.push(`armor_class = $${paramIndex}`); params.push(stringifyJSONField(armorClass)); paramIndex++; }
+    if (hitPoints !== undefined) { updates.push(`hit_points = $${paramIndex}`); params.push(stringifyJSONField(hitPoints)); paramIndex++; }
+    if (hitDice !== undefined) { updates.push(`hit_dice = $${paramIndex}`); params.push(hitDice || null); paramIndex++; }
+    if (damageVulnerabilities !== undefined) { updates.push(`damage_vulnerabilities = $${paramIndex}`); params.push(damageVulnerabilities || null); paramIndex++; }
+    if (damageResistances !== undefined) { updates.push(`damage_resistances = $${paramIndex}`); params.push(damageResistances || null); paramIndex++; }
+    if (damageImmunities !== undefined) { updates.push(`damage_immunities = $${paramIndex}`); params.push(damageImmunities || null); paramIndex++; }
+    if (conditionImmunities !== undefined) { updates.push(`condition_immunities = $${paramIndex}`); params.push(conditionImmunities || null); paramIndex++; }
+    if (speeds !== undefined) { updates.push(`speeds = $${paramIndex}`); params.push(stringifyJSONField(speeds)); paramIndex++; }
+    if (senses !== undefined) { updates.push(`senses = $${paramIndex}`); params.push(stringifyJSONField(senses)); paramIndex++; }
+    if (languages !== undefined) { updates.push(`languages = $${paramIndex}`); params.push(languages || null); paramIndex++; }
+    if (abilities !== undefined) { updates.push(`abilities = $${paramIndex}`); params.push(stringifyJSONField(abilities)); paramIndex++; }
+    if (savingThrows !== undefined) { updates.push(`saving_throws = $${paramIndex}`); params.push(stringifyJSONField(savingThrows)); paramIndex++; }
+    if (skills !== undefined) { updates.push(`skills = $${paramIndex}`); params.push(stringifyJSONField(skills)); paramIndex++; }
+    if (traits !== undefined) { updates.push(`traits = $${paramIndex}`); params.push(stringifyJSONField(traits)); paramIndex++; }
+    if (actions !== undefined) { updates.push(`actions = $${paramIndex}`); params.push(stringifyJSONField(actions)); paramIndex++; }
+    if (legendaryActionsMeta !== undefined) { updates.push(`legendary_actions_meta = $${paramIndex}`); params.push(stringifyJSONField(legendaryActionsMeta)); paramIndex++; }
+    if (lairActions !== undefined) { updates.push(`lair_actions = $${paramIndex}`); params.push(stringifyJSONField(lairActions)); paramIndex++; }
+    if (spellcasting !== undefined) { updates.push(`spellcasting = $${paramIndex}`); params.push(stringifyJSONField(spellcasting)); paramIndex++; }
+    if (shortDescription !== undefined) { updates.push(`short_description = $${paramIndex}`); params.push(shortDescription || null); paramIndex++; }
+    if (appearanceRichText !== undefined) { updates.push(`appearance_rich_text = $${paramIndex}`); params.push(appearanceRichText || null); paramIndex++; }
+    if (loreRichText !== undefined) { updates.push(`lore_rich_text = $${paramIndex}`); params.push(loreRichText || null); paramIndex++; }
+    if (tacticsRichText !== undefined) { updates.push(`tactics_rich_text = $${paramIndex}`); params.push(tacticsRichText || null); paramIndex++; }
+    if (dmNotesRichText !== undefined) { updates.push(`dm_notes_rich_text = $${paramIndex}`); params.push(dmNotesRichText || null); paramIndex++; }
+    if (linkedEntities !== undefined) { updates.push(`linked_entities = $${paramIndex}`); params.push(stringifyJSONField(linkedEntities)); paramIndex++; }
 
-    updates.push("last_updated_by_user_id = ?");
+    updates.push(`last_updated_by_user_id = $${paramIndex}`);
     params.push(userId);
+    paramIndex++;
     updates.push("updated_at = CURRENT_TIMESTAMP");
 
-    params.push(id, campaignId);
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
 
-    db.prepare(`
+    params.push(id, campaignId);
+    const finalParamIndex = paramIndex;
+
+    await query(`
       UPDATE creatures 
       SET ${updates.join(", ")}
-      WHERE id = ? AND campaign_id = ?
-    `).run(...params);
+      WHERE id = $${finalParamIndex} AND campaign_id = $${finalParamIndex + 1}
+    `, params);
 
-    const updatedCreature = db.prepare(`
+    const updatedCreature = await get(`
       SELECT c.*, 
              creator.username as created_by_username, creator.email as created_by_email,
              updater.username as last_updated_by_username, updater.email as last_updated_by_email
       FROM creatures c
       LEFT JOIN users creator ON c.created_by_user_id = creator.id
       LEFT JOIN users updater ON c.last_updated_by_user_id = updater.id
-      WHERE c.id = ?
-    `).get(id);
+      WHERE c.id = $1
+    `, [id]);
 
     // Get tags for this creature from entity_tags
-    const creatureTags = db.prepare(`
+    const creatureTags = await all(`
       SELECT t.*
       FROM tags t
       INNER JOIN entity_tags et ON t.id = et.tag_id
-      WHERE et.entity_type = 'creature' AND et.entity_id = ? AND t.campaign_id = ?
+      WHERE et.entity_type = 'creature' AND et.entity_id = $1 AND t.campaign_id = $2
       ORDER BY t.name ASC
-    `).all(id, campaignId);
+    `, [id, campaignId]);
 
     // Parse JSON fields
     const processed = {
@@ -522,16 +536,20 @@ router.put("/:campaignId/creatures/:id", requireCampaignDM, (req, res) => {
 });
 
 // DELETE /api/campaigns/:campaignId/creatures/:id
-router.delete("/:campaignId/creatures/:id", requireCampaignDM, (req, res) => {
+router.delete("/:campaignId/creatures/:id", requireCampaignDM, async (req, res) => {
   try {
     const { campaignId, id } = req.params;
 
-    const creature = db.prepare("SELECT id FROM creatures WHERE id = ? AND campaign_id = ?").get(id, campaignId);
+    const creature = await get("SELECT id FROM creatures WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
     if (!creature) {
       return res.status(404).json({ error: "Creature not found" });
     }
 
-    db.prepare("DELETE FROM creatures WHERE id = ? AND campaign_id = ?").run(id, campaignId);
+    const result = await query("DELETE FROM creatures WHERE id = $1 AND campaign_id = $2", [id, campaignId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Creature not found" });
+    }
 
     res.json({ message: "Creature deleted successfully" });
   } catch (error) {

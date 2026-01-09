@@ -36,22 +36,6 @@ async function apiRequest(endpoint, options = {}) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  // ⚠️ DEV MODE ONLY - Remove before production!
-  // Add simulated role header for dev testing
-  if (import.meta.env.DEV) {
-    // Extract campaign ID from endpoint (e.g., /api/campaigns/3/characters -> 3)
-    const campaignMatch = endpoint.match(/\/campaigns\/(\d+)/);
-    if (campaignMatch) {
-      const campaignId = campaignMatch[1];
-      const devRoleKey = `ttc_dev_campaign_role_${campaignId}`;
-      const simulatedRole = localStorage.getItem(devRoleKey);
-      if (simulatedRole) {
-        config.headers["X-Dev-Simulated-Role"] = simulatedRole;
-        config.headers["X-Dev-Campaign-Id"] = campaignId;
-      }
-    }
-  }
-
   try {
     const response = await fetch(url, config);
     
@@ -106,20 +90,6 @@ export const apiClient = {
       const headers = {};
       if (token) {
         headers.Authorization = `Bearer ${token}`;
-      }
-      
-      // Add dev role header if in dev mode
-      if (import.meta.env.DEV) {
-        const campaignMatch = endpoint.match(/\/campaigns\/(\d+)/);
-        if (campaignMatch) {
-          const campaignId = campaignMatch[1];
-          const devRoleKey = `ttc_dev_campaign_role_${campaignId}`;
-          const simulatedRole = localStorage.getItem(devRoleKey);
-          if (simulatedRole) {
-            headers["X-Dev-Simulated-Role"] = simulatedRole;
-            headers["X-Dev-Campaign-Id"] = campaignId;
-          }
-        }
       }
       
       return fetch(url, {

@@ -683,7 +683,7 @@ export default function Creatures() {
             <Tab label="Spellcasting" />
             <Tab label="Lore & Tactics" />
             <Tab label="Links" />
-            <Tab label="Images" disabled={!editingCreature?.id} />
+            <Tab label="Images" />
           </Tabs>
 
           {/* Overview Tab */}
@@ -1746,14 +1746,22 @@ export default function Creatures() {
           )}
 
           {/* Images Tab */}
-          {dialogTab === 9 && editingCreature?.id && (
+          {dialogTab === 9 && (
             <Box sx={{ pt: 2 }}>
-              <ImageGallery
-                campaignId={campaignId}
-                entityType="creature"
-                entityId={editingCreature.id}
-                onUpdate={fetchCreatures}
-              />
+              {editingCreature?.id ? (
+                <ImageGallery
+                  campaignId={campaignId}
+                  entityType="creature"
+                  entityId={editingCreature.id}
+                  onUpdate={fetchCreatures}
+                />
+              ) : (
+                <Box sx={{ textAlign: "center", py: 4 }}>
+                  <Typography color="text.secondary">
+                    Save the creature first to upload images.
+                  </Typography>
+                </Box>
+              )}
             </Box>
           )}
         </DialogContent>

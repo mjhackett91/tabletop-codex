@@ -1,6 +1,7 @@
 // client/src/pages/Sessions.jsx - Session Notes management page with multiple sections
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
+import { sanitizeHTML } from "../utils/sanitize.js";
 import {
   Box,
   Typography,
@@ -755,7 +756,7 @@ export default function Sessions() {
                         "& *": { display: "inline" }
                       }}
                       dangerouslySetInnerHTML={{ 
-                        __html: session.summary || "<span style='color: #bdbdbd'>No summary</span>" 
+                        __html: sanitizeHTML(session.summary || "<span style='color: #bdbdbd'>No summary</span>")
                       }}
                     />
                   </TableCell>
@@ -812,88 +813,88 @@ export default function Sessions() {
           sx: { height: "90vh" }
         }}
       >
-        <DialogTitle>
-          {editingSession ? "Edit Session" : "New Session"}
-          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-            {editingSession ? "Update" : "Create"} a session entry with organized note sections
+        <DialogTitle sx={{ pb: 1 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
+              {editingSession ? "Edit Session" : "New Session"}
+            </Typography>
             {editingSession && editingSession.created_by_username && (
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                Created by {editingSession.created_by_username} on {formatDate(editingSession.created_at)}
-                {editingSession.last_updated_by_username && editingSession.last_updated_by_username !== editingSession.created_by_username && (
-                  <> • Last updated by {editingSession.last_updated_by_username} on {formatDate(editingSession.updated_at)}</>
-                )}
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem", mt: 0.5 }}>
+                by {editingSession.created_by_username} • {formatDate(editingSession.created_at)}
               </Typography>
             )}
-          </Typography>
+          </Box>
         </DialogTitle>
-        <DialogContent dividers sx={{ p: 0, display: "flex", flexDirection: "column", height: "100%" }}>
-          <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ borderBottom: 1, borderColor: "divider" }}>
+        <DialogContent dividers sx={{ p: 0, display: "flex", flexDirection: "column", overflow: "hidden", height: "calc(90vh - 120px)" }}>
+          <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ borderBottom: 1, borderColor: "divider", flexShrink: 0 }}>
             <Tab label="Session Notes" />
-            <Tab label="Images" disabled={!editingSession?.id} />
+            <Tab label="Images" />
           </Tabs>
 
           {dialogTab === 0 && (
           <>
-          <Box sx={{ p: 2, borderBottom: 1, borderColor: "divider" }}>
-            <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
+          <Box sx={{ p: 1, borderBottom: 1, borderColor: "divider", flexShrink: 0 }}>
+            <Box sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
               <TextField
-                label="Session Number"
+                label="Session #"
                 type="number"
                 variant="outlined"
                 value={formData.session_number}
                 onChange={(e) => setFormData({ ...formData, session_number: e.target.value })}
-                helperText={!editingSession ? "Leave empty to auto-increment" : ""}
-                sx={{ flex: 1 }}
+                helperText={!editingSession ? "Auto-increment" : ""}
+                sx={{ width: 100 }}
                 size="small"
               />
               <TextField
-                label="Date Played"
+                label="Date"
                 type="date"
                 variant="outlined"
                 value={formData.date_played ? (() => {
-                  // Ensure date is in YYYY-MM-DD format for date input
-                  // If it's a full datetime string, extract just the date part
                   if (formData.date_played.includes('T')) {
                     return formData.date_played.split('T')[0];
                   }
                   return formData.date_played;
                 })() : ""}
                 onChange={(e) => {
-                  // Store as YYYY-MM-DD format (date only, no time)
                   setFormData({ ...formData, date_played: e.target.value || null });
                 }}
                 InputLabelProps={{ shrink: true }}
+                sx={{ width: 160 }}
+                size="small"
+              />
+              <TextField
+                label="Title"
+                variant="outlined"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                placeholder="Session title..."
                 sx={{ flex: 1 }}
                 size="small"
               />
             </Box>
-            <TextField
-              label="Session Title"
-              fullWidth
-              variant="outlined"
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              placeholder="e.g., The Dragon's Lair"
-              size="small"
-            />
           </Box>
 
-          <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
-            <Tabs
-              orientation="vertical"
-              value={activeTab}
-              onChange={(e, newValue) => setActiveTab(newValue)}
-              sx={{ 
-                borderRight: 1, 
-                borderColor: "divider",
-                minWidth: 200,
-                "& .MuiTab-root": {
-                  textTransform: "none",
-                  alignItems: "flex-start",
-                  minHeight: 48
-                }
-              }}
-            >
+          <Box sx={{ display: "flex", flex: 1, overflow: "hidden", minHeight: 0 }}>
+            <Box sx={{ 
+              borderRight: 1, 
+              borderColor: "divider",
+              minWidth: 200,
+              flexShrink: 0,
+              overflowY: "auto",
+              overflowX: "hidden"
+            }}>
+              <Tabs
+                orientation="vertical"
+                value={activeTab}
+                onChange={(e, newValue) => setActiveTab(newValue)}
+                sx={{ 
+                  "& .MuiTab-root": {
+                    textTransform: "none",
+                    alignItems: "flex-start",
+                    minHeight: 48
+                  }
+                }}
+              >
               {SECTIONS.map((section, index) => {
                 const Icon = section.icon;
                 return (
@@ -906,9 +907,10 @@ export default function Sessions() {
                   />
                 );
               })}
-            </Tabs>
+              </Tabs>
+            </Box>
 
-            <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
+            <Box sx={{ flex: 1, overflow: "auto", p: 2, minHeight: 0 }}>
               {activeTab === 0 && (
                 <Box>
                   <Typography variant="h6" gutterBottom>Session Summary</Typography>
@@ -1026,85 +1028,77 @@ export default function Sessions() {
             </Box>
           </Box>
           
-          <Box sx={{ p: 2, borderTop: 1, borderColor: "divider" }}>
-            <FormControl component="fieldset" fullWidth>
-              <FormLabel component="legend">Visibility</FormLabel>
-              <RadioGroup
-                row
-                value={formData.visibility}
-                onChange={(e) => setFormData({ ...formData, visibility: e.target.value })}
-              >
-                <FormControlLabel 
-                  value="dm-only" 
-                  control={<Radio />} 
-                  label="DM Only" 
-                />
-                <FormControlLabel 
-                  value="player-visible" 
-                  control={<Radio />} 
-                  label="DM & Players" 
-                />
-                <FormControlLabel 
-                  value="hidden" 
-                  control={<Radio />} 
-                  label="Hidden" 
-                />
-              </RadioGroup>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-                {formData.visibility === "dm-only" && "Only DMs can see this session"}
-                {formData.visibility === "player-visible" && "Both DMs and players can see this session"}
-                {formData.visibility === "hidden" && "Hidden from all participants"}
-              </Typography>
-            </FormControl>
+          <Box sx={{ px: 1, py: 0.75, borderTop: 1, borderColor: "divider", flexShrink: 0 }}>
+            <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
+              <FormControl component="fieldset" size="small" sx={{ flex: "0 0 auto" }}>
+                <RadioGroup
+                  row
+                  value={formData.visibility}
+                  onChange={(e) => setFormData({ ...formData, visibility: e.target.value })}
+                >
+                  <FormControlLabel 
+                    value="dm-only" 
+                    control={<Radio size="small" sx={{ py: 0.5 }} />} 
+                    label={<Typography variant="caption" sx={{ fontSize: "0.7rem" }}>DM Only</Typography>}
+                    sx={{ mr: 0.5 }}
+                  />
+                  <FormControlLabel 
+                    value="player-visible" 
+                    control={<Radio size="small" sx={{ py: 0.5 }} />} 
+                    label={<Typography variant="caption" sx={{ fontSize: "0.7rem" }}>DM & Players</Typography>}
+                    sx={{ mr: 0.5 }}
+                  />
+                  <FormControlLabel 
+                    value="hidden" 
+                    control={<Radio size="small" sx={{ py: 0.5 }} />} 
+                    label={<Typography variant="caption" sx={{ fontSize: "0.7rem" }}>Hidden</Typography>}
+                  />
+                </RadioGroup>
+              </FormControl>
 
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Tags
-              </Typography>
-              <TagSelector
-                campaignId={campaignId}
-                selectedTagIds={selectedTagIds}
-                onChange={setSelectedTagIds}
-                entityType="session"
-                entityId={editingSession?.id}
-                userRole={userRole}
-              />
+              <Box sx={{ flex: "1 1 auto", minWidth: 200 }}>
+                <TagSelector
+                  campaignId={campaignId}
+                  selectedTagIds={selectedTagIds}
+                  onChange={setSelectedTagIds}
+                  entityType="session"
+                  entityId={editingSession?.id}
+                  userRole={userRole}
+                />
+              </Box>
             </Box>
           </Box>
 
           {/* Player Notes Section */}
           {editingSession && (
-            <Box sx={{ p: 2, borderTop: 1, borderColor: "divider" }}>
-              <Typography variant="h6" gutterBottom>
+            <Box sx={{ px: 1, py: 0.75, borderTop: 1, borderColor: "divider", flexShrink: 0, maxHeight: "180px", overflowY: "auto" }}>
+              <Typography variant="caption" fontWeight={600} sx={{ fontSize: "0.75rem", display: "block", mb: 0.75 }}>
                 Player Notes
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Notes added by players. DMs can see all notes, players can see notes marked as "Player Visible".
               </Typography>
 
               {/* Existing Player Notes */}
               {playerNotes.length > 0 && (
-                <Box sx={{ mb: 2 }}>
+                <Box sx={{ mb: 1 }}>
                   {playerNotes.map((note) => (
                     <Paper
                       key={note.id}
                       sx={{
-                        p: 2,
-                        mb: 2,
+                        p: 1,
+                        mb: 1,
                         bgcolor: note.user_id === currentUserId ? "action.selected" : "background.paper",
                         border: note.user_id === currentUserId ? 1 : 0,
                         borderColor: "primary.main"
                       }}
                     >
-                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1 }}>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 0.5 }}>
                         <Box>
-                          <Typography variant="subtitle2" fontWeight="medium">
+                          <Typography variant="caption" fontWeight={600} sx={{ fontSize: "0.75rem" }}>
                             {note.username}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.65rem", display: "block" }}>
                             {formatDate(note.created_at)}
-                            {note.visibility === "player-visible" && " • Visible to all players"}
-                            {note.visibility === "dm-only" && " • DM only"}
+                            {note.visibility === "player-visible" && " • All"}
+                            {note.visibility === "dm-only" && " • DM"}
                           </Typography>
                         </Box>
                         {note.user_id === currentUserId && (
@@ -1131,7 +1125,7 @@ export default function Sessions() {
                           "& p": { margin: 0 },
                           "& *": { display: "inline" }
                         }}
-                        dangerouslySetInnerHTML={{ __html: note.note_content || "" }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeHTML(note.note_content || "") }}
                       />
                     </Paper>
                   ))}
@@ -1218,14 +1212,22 @@ export default function Sessions() {
           </>
           )}
 
-          {dialogTab === 1 && editingSession?.id && (
+          {dialogTab === 1 && (
             <Box sx={{ p: 2 }}>
-              <ImageGallery
-                campaignId={campaignId}
-                entityType="session"
-                entityId={editingSession.id}
-                onUpdate={fetchSessions}
-              />
+              {editingSession?.id ? (
+                <ImageGallery
+                  campaignId={campaignId}
+                  entityType="session"
+                  entityId={editingSession.id}
+                  onUpdate={fetchSessions}
+                />
+              ) : (
+                <Box sx={{ textAlign: "center", py: 4 }}>
+                  <Typography color="text.secondary">
+                    Save the session first to upload images.
+                  </Typography>
+                </Box>
+              )}
             </Box>
           )}
         </DialogContent>

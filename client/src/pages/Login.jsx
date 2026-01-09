@@ -80,7 +80,10 @@ export default function Login() {
           >
             {loading ? "Logging in..." : "Login"}
           </Button>
-          <Box sx={{ textAlign: "center" }}>
+          <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 1 }}>
+            <Link component={RouterLink} to="/forgot-password" color="primary">
+              Forgot Password?
+            </Link>
             <Link component={RouterLink} to="/register" color="primary">
               Don't have an account? Register
             </Link>

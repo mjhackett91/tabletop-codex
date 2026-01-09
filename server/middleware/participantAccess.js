@@ -1,11 +1,10 @@
 // server/middleware/participantAccess.js - Middleware for participant access control
-// ⚠️ DEV MODE: Supports simulated roles via X-Dev-Simulated-Role header
 import { hasCampaignAccess, isCampaignDM, getUserCampaignRole } from "../utils/participantAccess.js";
 
 /**
  * Middleware to require campaign access (owner or participant)
  */
-export function requireCampaignAccess(req, res, next) {
+export async function requireCampaignAccess(req, res, next) {
   try {
     const { campaignId } = req.params;
     const userId = req.user?.id;
@@ -24,17 +23,14 @@ export function requireCampaignAccess(req, res, next) {
       return res.status(400).json({ error: "Invalid campaign ID" });
     }
 
-    const hasAccess = hasCampaignAccess(campaignIdInt, userId, req);
-    console.log(`[requireCampaignAccess] Campaign ${campaignIdInt}, User ${userId}, Has Access: ${hasAccess}`);
+    const hasAccess = await hasCampaignAccess(campaignIdInt, userId, req);
     
     if (!hasAccess) {
       return res.status(403).json({ error: "You are not a participant in this campaign" });
     }
 
     // Attach user's role to request for use in route handlers
-    // Pass req to check for dev simulated role
-    req.userCampaignRole = getUserCampaignRole(campaignIdInt, userId, req);
-    console.log(`[requireCampaignAccess] User role: ${req.userCampaignRole}`);
+    req.userCampaignRole = await getUserCampaignRole(campaignIdInt, userId, req);
     next();
   } catch (error) {
     console.error("Error in requireCampaignAccess:", error);
@@ -45,7 +41,7 @@ export function requireCampaignAccess(req, res, next) {
 /**
  * Middleware to require DM access
  */
-export function requireCampaignDM(req, res, next) {
+export async function requireCampaignDM(req, res, next) {
   try {
     const { campaignId } = req.params;
     const userId = req.user?.id;
@@ -64,7 +60,7 @@ export function requireCampaignDM(req, res, next) {
       return res.status(400).json({ error: "Invalid campaign ID" });
     }
 
-    if (!isCampaignDM(campaignIdInt, userId, req)) {
+    if (!(await isCampaignDM(campaignIdInt, userId, req))) {
       return res.status(403).json({ error: "DM access required" });
     }
 

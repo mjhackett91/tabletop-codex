@@ -1,24 +1,25 @@
 // server/utils/campaignOwnership.js - Shared campaign ownership checker
-import db from "../db.js";
+import { get } from "../db-pg.js";
 
 /**
  * Verify that a campaign belongs to the authenticated user
  * @param {number} campaignId - Campaign ID to check
  * @param {number} userId - Authenticated user ID
- * @returns {boolean} True if owned, false otherwise
+ * @returns {Promise<boolean>} True if owned, false otherwise
  */
-export function verifyCampaignOwnership(campaignId, userId) {
-  const campaign = db
-    .prepare("SELECT id FROM campaigns WHERE id = ? AND user_id = ?")
-    .get(campaignId, userId);
+export async function verifyCampaignOwnership(campaignId, userId) {
+  const campaign = await get(
+    "SELECT id FROM campaigns WHERE id = $1 AND user_id = $2",
+    [campaignId, userId]
+  );
   
-  return campaign !== undefined;
+  return campaign !== null;
 }
 
 /**
  * Middleware to check campaign ownership
  */
-export function requireCampaignOwnership(req, res, next) {
+export async function requireCampaignOwnership(req, res, next) {
   try {
     const { campaignId } = req.params;
     const userId = req.user?.id;
@@ -33,7 +34,7 @@ export function requireCampaignOwnership(req, res, next) {
       return res.status(400).json({ error: "Campaign ID is required" });
     }
 
-    if (!verifyCampaignOwnership(campaignId, userId)) {
+    if (!(await verifyCampaignOwnership(campaignId, userId))) {
       return res.status(403).json({ error: "Campaign not found or access denied" });
     }
 

@@ -2,10 +2,19 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import db from "../db.js";
+import crypto from "crypto";
+import { get, query } from "../db-pg.js";
+import { sendPasswordResetEmail, isConfigured } from "../utils/email.js";
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
+
+// In production, JWT_SECRET must be set via environment variable
+if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+  console.error("❌ JWT_SECRET environment variable is required in production");
+  process.exit(1);
+}
+
+const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production-dev-only";
 
 // POST /api/auth/register
 router.post("/register", async (req, res) => {
@@ -16,12 +25,30 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Username, email, and password required" });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    // Strengthen password requirements
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
+    
+    // Check for basic password complexity (at least one letter and one number)
+    if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+      return res.status(400).json({ error: "Password must contain at least one letter and one number" });
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
+    
+    // Sanitize username (alphanumeric, underscore, hyphen, 3-20 chars)
+    const usernameRegex = /^[a-zA-Z0-9_-]{3,20}$/;
+    if (!usernameRegex.test(username)) {
+      return res.status(400).json({ error: "Username must be 3-20 characters and contain only letters, numbers, underscores, and hyphens" });
     }
 
     // Check if user exists
-    const existing = db.prepare("SELECT id FROM users WHERE username = ? OR email = ?").get(username, email);
+    const existing = await get("SELECT id FROM users WHERE username = $1 OR email = $2", [username, email]);
     if (existing) {
       return res.status(400).json({ error: "Username or email already exists" });
     }
@@ -30,22 +57,26 @@ router.post("/register", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     // Create user
-    const stmt = db.prepare("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)");
-    const result = stmt.run(username, email, passwordHash);
+    const result = await query(
+      "INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id",
+      [username, email, passwordHash]
+    );
 
+    const userId = result.rows[0].id;
     const token = jwt.sign(
-      { userId: result.lastInsertRowid, username },
+      { userId, username },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
     res.status(201).json({
       token,
-      user: { id: result.lastInsertRowid, username, email }
+      user: { id: userId, username, email }
     });
   } catch (error) {
     console.error("Registration error:", error);
-    res.status(500).json({ error: "Failed to register user" });
+    // Don't expose internal error details to clients
+    res.status(500).json({ error: "Failed to register user. Please try again." });
   }
 });
 
@@ -59,7 +90,7 @@ router.post("/login", async (req, res) => {
     }
 
     // Find user
-    const user = db.prepare("SELECT * FROM users WHERE username = ? OR email = ?").get(username, username);
+    const user = await get("SELECT * FROM users WHERE username = $1 OR email = $1", [username]);
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
@@ -82,7 +113,157 @@ router.post("/login", async (req, res) => {
     });
   } catch (error) {
     console.error("Login error:", error);
-    res.status(500).json({ error: "Failed to login" });
+    // Don't expose internal error details to clients
+    res.status(500).json({ error: "Failed to login. Please try again." });
+  }
+});
+
+// POST /api/auth/forgot-password
+// Request password reset - generates token and optionally sends email
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
+
+    // Find user by email
+    const user = await get("SELECT id, username, email FROM users WHERE email = $1", [email.toLowerCase().trim()]);
+    
+    // Always return success message to prevent email enumeration
+    // In production, you might want to add rate limiting here
+    const responseMessage = {
+      message: "If an account with that email exists, a password reset link has been sent."
+    };
+
+    if (!user) {
+      // User doesn't exist, but don't reveal this
+      return res.json(responseMessage);
+    }
+
+    // Generate secure random token
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    
+    // Set expiration to 1 hour from now
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 1);
+
+    // Invalidate any existing unused tokens for this user
+    await query(
+      "UPDATE password_reset_tokens SET used = TRUE WHERE user_id = $1 AND used = FALSE",
+      [user.id]
+    );
+
+    // Store reset token in database
+    await query(
+      "INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)",
+      [user.id, resetToken, expiresAt]
+    );
+
+    // Construct reset URL
+    const baseUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get("host")}`;
+    const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
+
+    // Attempt to send email
+    const emailSent = await sendPasswordResetEmail(user.email, resetToken, resetUrl);
+
+    // If email is not configured (development/self-hosted), return token in response
+    if (!isConfigured() || process.env.NODE_ENV === "development") {
+      console.log(`[Password Reset] Token for ${user.email}: ${resetToken}`);
+      console.log(`[Password Reset] Reset URL: ${resetUrl}`);
+      
+      // Only include dev info if email failed to send OR in development mode
+      if (!emailSent || process.env.NODE_ENV === "development") {
+        return res.json({
+          ...responseMessage,
+          dev: {
+            token: resetToken,
+            resetUrl: resetUrl,
+            expiresAt: expiresAt.toISOString(),
+            note: emailSent ? "Email also sent" : "Email not configured - use this link"
+          }
+        });
+      }
+    }
+
+    // If email was sent successfully, just return success message
+    res.json(responseMessage);
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    // Don't expose internal error details
+    res.status(500).json({ error: "Failed to process password reset request. Please try again." });
+  }
+});
+
+// POST /api/auth/reset-password
+// Reset password using token
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({ error: "Token and password are required" });
+    }
+
+    // Validate password requirements
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
+    
+    if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+      return res.status(400).json({ error: "Password must contain at least one letter and one number" });
+    }
+
+    // Find valid, unused, non-expired token
+    const resetToken = await get(`
+      SELECT prt.*, u.id as user_id, u.email, u.username
+      FROM password_reset_tokens prt
+      JOIN users u ON prt.user_id = u.id
+      WHERE prt.token = $1 
+        AND prt.used = FALSE 
+        AND prt.expires_at > NOW()
+      ORDER BY prt.created_at DESC
+      LIMIT 1
+    `, [token]);
+
+    if (!resetToken) {
+      return res.status(400).json({ error: "Invalid or expired reset token" });
+    }
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // Update user password
+    await query(
+      "UPDATE users SET password_hash = $1 WHERE id = $2",
+      [passwordHash, resetToken.user_id]
+    );
+
+    // Mark token as used
+    await query(
+      "UPDATE password_reset_tokens SET used = TRUE WHERE id = $1",
+      [resetToken.id]
+    );
+
+    // Invalidate all other unused tokens for this user
+    await query(
+      "UPDATE password_reset_tokens SET used = TRUE WHERE user_id = $1 AND used = FALSE AND id != $2",
+      [resetToken.user_id, resetToken.id]
+    );
+
+    res.json({ 
+      message: "Password reset successfully. You can now login with your new password." 
+    });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ error: "Failed to reset password. Please try again." });
   }
 });
 

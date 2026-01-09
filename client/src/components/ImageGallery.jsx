@@ -66,16 +66,6 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
           if (token) {
             headers.Authorization = `Bearer ${token}`;
           }
-          
-          // Add dev role header if in dev mode
-          if (import.meta.env.DEV) {
-            const devRoleKey = `ttc_dev_campaign_role_${campaignId}`;
-            const simulatedRole = localStorage.getItem(devRoleKey);
-            if (simulatedRole) {
-              headers["X-Dev-Simulated-Role"] = simulatedRole;
-              headers["X-Dev-Campaign-Id"] = campaignId;
-            }
-          }
 
           console.log("[ImageGallery] Fetching image:", url, "Headers:", Object.keys(headers));
           const response = await fetch(url, { headers });
@@ -179,16 +169,6 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
       const headers = {};
       if (token) {
         headers.Authorization = `Bearer ${token}`;
-      }
-      
-      // Add dev role header if in dev mode
-      if (import.meta.env.DEV) {
-        const devRoleKey = `ttc_dev_campaign_role_${campaignId}`;
-        const simulatedRole = localStorage.getItem(devRoleKey);
-        if (simulatedRole) {
-          headers["X-Dev-Simulated-Role"] = simulatedRole;
-          headers["X-Dev-Campaign-Id"] = campaignId;
-        }
       }
 
       const response = await fetch(url, { headers });
