@@ -2,7 +2,7 @@
 import express from "express";
 import db from "../db.js";
 import { authenticateToken } from "../middleware/auth.js";
-import { requireCampaignOwnership } from "../utils/campaignOwnership.js";
+import { requireCampaignAccess, requireCampaignDM } from "../middleware/participantAccess.js";
 
 const router = express.Router({ mergeParams: true });
 
@@ -10,32 +10,60 @@ const router = express.Router({ mergeParams: true });
 router.use(authenticateToken);
 
 // GET /api/campaigns/:campaignId/world-info
-router.get("/:campaignId/world-info", requireCampaignOwnership, (req, res) => {
+router.get("/:campaignId/world-info", requireCampaignAccess, (req, res) => {
   try {
     const { campaignId } = req.params;
     const { search, category } = req.query;
+    const userRole = req.userCampaignRole;
+
+    console.log(`[WorldInfo GET] Campaign: ${campaignId}, UserRole: ${userRole}, UserId: ${req.user?.id}`);
 
     if (!campaignId) {
       return res.status(400).json({ error: "Campaign ID is required" });
     }
 
-    let query = "SELECT * FROM world_info WHERE campaign_id = ?";
+    if (!userRole) {
+      console.error(`[WorldInfo GET] userRole is undefined for user ${req.user?.id} in campaign ${campaignId}`);
+      return res.status(403).json({ error: "Access denied - no role assigned" });
+    }
+
+    let query = `
+      SELECT w.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM world_info w
+      LEFT JOIN users creator ON w.created_by_user_id = creator.id
+      LEFT JOIN users updater ON w.last_updated_by_user_id = updater.id
+      WHERE w.campaign_id = ?
+    `;
     const params = [campaignId];
 
+    // Filter by visibility: players only see player-visible, DMs see all except hidden
+    if (userRole === "player") {
+      query += " AND w.visibility = 'player-visible'";
+    } else if (userRole === "dm") {
+      query += " AND w.visibility != 'hidden'";
+    } else {
+      console.error(`[WorldInfo GET] Invalid userRole: ${userRole}`);
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     if (category) {
-      query += " AND category = ?";
+      query += " AND w.category = ?";
       params.push(category);
     }
 
     if (search) {
-      query += " AND (title LIKE ? OR content LIKE ?)";
+      query += " AND (w.title LIKE ? OR w.content LIKE ?)";
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
     }
 
-    query += " ORDER BY category, title";
+    query += " ORDER BY w.category, w.title";
 
+    console.log(`[WorldInfo GET] Executing query: ${query} with params:`, params);
     const worldInfo = db.prepare(query).all(...params);
+    console.log(`[WorldInfo GET] Found ${worldInfo.length} world info entries`);
 
     res.json(worldInfo);
   } catch (error) {
@@ -46,13 +74,32 @@ router.get("/:campaignId/world-info", requireCampaignOwnership, (req, res) => {
 });
 
 // GET /api/campaigns/:campaignId/world-info/:id
-router.get("/:campaignId/world-info/:id", requireCampaignOwnership, (req, res) => {
+router.get("/:campaignId/world-info/:id", requireCampaignAccess, (req, res) => {
   try {
     const { campaignId, id } = req.params;
+    const userRole = req.userCampaignRole;
 
-    const worldInfo = db
-      .prepare("SELECT * FROM world_info WHERE id = ? AND campaign_id = ?")
-      .get(id, campaignId);
+    let query = `
+      SELECT w.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM world_info w
+      LEFT JOIN users creator ON w.created_by_user_id = creator.id
+      LEFT JOIN users updater ON w.last_updated_by_user_id = updater.id
+      WHERE w.id = ? AND w.campaign_id = ?
+    `;
+    const params = [id, campaignId];
+
+    // Filter by visibility
+    if (userRole === "player") {
+      query += " AND w.visibility = 'player-visible'";
+    } else if (userRole === "dm") {
+      query += " AND w.visibility != 'hidden'";
+    } else {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    const worldInfo = db.prepare(query).get(...params);
 
     if (!worldInfo) {
       return res.status(404).json({ error: "World info not found" });
@@ -66,10 +113,11 @@ router.get("/:campaignId/world-info/:id", requireCampaignOwnership, (req, res) =
 });
 
 // POST /api/campaigns/:campaignId/world-info
-router.post("/:campaignId/world-info", requireCampaignOwnership, (req, res) => {
+router.post("/:campaignId/world-info", requireCampaignDM, (req, res) => {
   try {
     const { campaignId } = req.params;
-    const { title, content, category } = req.body;
+    const { title, content, category, visibility } = req.body;
+    const userId = req.user.id;
 
     if (!title || !title.trim()) {
       return res.status(400).json({ error: "Title is required" });
@@ -77,18 +125,29 @@ router.post("/:campaignId/world-info", requireCampaignOwnership, (req, res) => {
 
     const result = db
       .prepare(
-        `INSERT INTO world_info (campaign_id, title, content, category)
-         VALUES (?, ?, ?, ?)`
+        `INSERT INTO world_info (campaign_id, title, content, category, visibility, created_by_user_id, last_updated_by_user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         campaignId,
         title.trim(),
         content || null,
-        category || null
+        category || null,
+        visibility || "dm-only",
+        userId, // created_by_user_id
+        userId  // last_updated_by_user_id
       );
 
     const newWorldInfo = db
-      .prepare("SELECT * FROM world_info WHERE id = ?")
+      .prepare(`
+        SELECT w.*, 
+               creator.username as created_by_username, creator.email as created_by_email,
+               updater.username as last_updated_by_username, updater.email as last_updated_by_email
+        FROM world_info w
+        LEFT JOIN users creator ON w.created_by_user_id = creator.id
+        LEFT JOIN users updater ON w.last_updated_by_user_id = updater.id
+        WHERE w.id = ?
+      `)
       .get(result.lastInsertRowid);
 
     res.status(201).json(newWorldInfo);
@@ -99,10 +158,10 @@ router.post("/:campaignId/world-info", requireCampaignOwnership, (req, res) => {
 });
 
 // PUT /api/campaigns/:campaignId/world-info/:id
-router.put("/:campaignId/world-info/:id", requireCampaignOwnership, (req, res) => {
+router.put("/:campaignId/world-info/:id", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id } = req.params;
-    const { title, content, category } = req.body;
+    const { title, content, category, visibility } = req.body;
 
     if (!title || !title.trim()) {
       return res.status(400).json({ error: "Title is required" });
@@ -117,20 +176,32 @@ router.put("/:campaignId/world-info/:id", requireCampaignOwnership, (req, res) =
       return res.status(404).json({ error: "World info not found" });
     }
 
+    const userId = req.user.id;
+
     db.prepare(
       `UPDATE world_info 
-       SET title = ?, content = ?, category = ?, updated_at = CURRENT_TIMESTAMP
+       SET title = ?, content = ?, category = ?, visibility = ?, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = ?
        WHERE id = ? AND campaign_id = ?`
     ).run(
       title.trim(),
       content || null,
       category || null,
+      visibility || "dm-only",
+      userId, // last_updated_by_user_id
       id,
       campaignId
     );
 
     const updatedWorldInfo = db
-      .prepare("SELECT * FROM world_info WHERE id = ?")
+      .prepare(`
+        SELECT w.*, 
+               creator.username as created_by_username, creator.email as created_by_email,
+               updater.username as last_updated_by_username, updater.email as last_updated_by_email
+        FROM world_info w
+        LEFT JOIN users creator ON w.created_by_user_id = creator.id
+        LEFT JOIN users updater ON w.last_updated_by_user_id = updater.id
+        WHERE w.id = ?
+      `)
       .get(id);
 
     res.json(updatedWorldInfo);
@@ -141,7 +212,7 @@ router.put("/:campaignId/world-info/:id", requireCampaignOwnership, (req, res) =
 });
 
 // DELETE /api/campaigns/:campaignId/world-info/:id
-router.delete("/:campaignId/world-info/:id", requireCampaignOwnership, (req, res) => {
+router.delete("/:campaignId/world-info/:id", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id } = req.params;
 

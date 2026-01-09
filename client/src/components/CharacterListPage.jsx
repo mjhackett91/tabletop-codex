@@ -1,6 +1,6 @@
 // client/src/components/CharacterListPage.jsx - Shared component for Characters, NPCs, Antagonists
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -25,6 +25,14 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  Select,
+  MenuItem,
+  InputLabel,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -78,6 +86,7 @@ const TYPE_CONFIG = {
 
 export default function CharacterListPage({ type }) {
   const { id: campaignId } = useParams();
+  const location = useLocation();
   const [characters, setCharacters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
@@ -86,9 +95,14 @@ export default function CharacterListPage({ type }) {
     name: "", 
     description: "", 
     alignment: "",
-    character_sheet: null
+    character_sheet: null,
+    visibility: "dm-only",
+    player_user_id: null
   });
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+  const [participants, setParticipants] = useState([]);
+  const [userRole, setUserRole] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   const config = TYPE_CONFIG[type];
 
@@ -114,9 +128,101 @@ export default function CharacterListPage({ type }) {
     }
   };
 
+  // Fetch participants and user role
+  const fetchParticipants = async () => {
+    try {
+      const [participantsData, roleData] = await Promise.all([
+        apiClient.get(`/api/campaigns/${campaignId}/participants`),
+        apiClient.get(`/api/campaigns/${campaignId}/my-role`)
+      ]);
+      setParticipants(participantsData || []);
+      setUserRole(roleData?.role || null);
+      
+      // Get current user ID from token
+      const token = localStorage.getItem("token");
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split(".")[1]));
+          setCurrentUserId(payload.userId);
+        } catch (e) {
+          console.error("Error parsing token:", e);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch participants or role:", error);
+    }
+  };
+
   useEffect(() => {
     fetchCharacters();
+    fetchParticipants();
   }, [campaignId, type]);
+
+  // Check for navigation state to auto-open entity dialog
+  useEffect(() => {
+    if (location.state?.openEntityId && characters.length > 0) {
+      const entityId = location.state.openEntityId;
+      const entityType = location.state.entityType;
+      const characterId = location.state.characterId; // For equipment links
+      
+      console.log("[CharacterListPage] Navigation state detected:", {
+        entityId,
+        entityType,
+        characterId,
+        charactersCount: characters.length,
+        characterIds: characters.map(c => c.id)
+      });
+      
+      // Only auto-open if the entity type matches this page's type
+      if (entityType === "character" || entityType === "equipment") {
+        // For equipment, use characterId; for characters, use entityId
+        let targetId;
+        if (entityType === "equipment") {
+          // First try to use characterId from navigation state
+          if (characterId) {
+            targetId = characterId;
+            console.log("[CharacterListPage] Equipment link detected, using characterId from state:", characterId);
+          } else {
+            // Fallback: extract characterId from entityId (format: "equipment-{characterId}-{itemName}")
+            const match = typeof entityId === 'string' ? entityId.match(/^equipment-(\d+)-/) : null;
+            if (match && match[1]) {
+              targetId = match[1];
+              console.log("[CharacterListPage] Equipment link detected, extracted characterId from entityId:", targetId);
+            } else {
+              console.warn("[CharacterListPage] Equipment link but could not extract characterId from entityId:", entityId);
+              return;
+            }
+          }
+        } else {
+          targetId = entityId;
+        }
+        // Normalize IDs to numbers for comparison (handle both string and number IDs)
+        const targetIdNum = typeof targetId === 'string' ? parseInt(targetId, 10) : targetId;
+        if (isNaN(targetIdNum)) {
+          console.warn("[CharacterListPage] Invalid target ID (could not parse to number):", targetId);
+          return;
+        }
+        console.log("[CharacterListPage] Looking for character with ID:", targetId, "(normalized:", targetIdNum, ")");
+        const character = characters.find(c => {
+          const charIdNum = typeof c.id === 'string' ? parseInt(c.id, 10) : c.id;
+          return charIdNum === targetIdNum;
+        });
+        if (character) {
+          console.log("[CharacterListPage] Found character, opening dialog:", character.name);
+          handleOpenDialog(character);
+          // Clear the state to prevent re-opening on re-render
+          window.history.replaceState({}, document.title);
+        } else {
+          console.log("[CharacterListPage] Character not found with ID:", targetId, "(normalized:", targetIdNum, ")");
+        }
+      }
+    } else if (location.state?.openEntityId) {
+      console.log("[CharacterListPage] Navigation state detected but characters not loaded yet:", {
+        entityId: location.state.openEntityId,
+        charactersCount: characters.length
+      });
+    }
+  }, [location.state, characters]);
 
   const showSnackbar = (message, severity = "success") => {
     setSnackbar({ open: true, message, severity });
@@ -128,11 +234,30 @@ export default function CharacterListPage({ type }) {
 
   const handleOpenDialog = (character = null) => {
     setEditingCharacter(character);
+    
+    // Determine default visibility based on who is creating and what type
+    let defaultVisibility = "dm-only";
+    if (!character) {
+      // New character - set default based on creator role and type
+      if (userRole === "player") {
+        // Players creating NPCs/antagonists default to "player-visible"
+        // Players creating player characters default to "player-visible"
+        defaultVisibility = "player-visible";
+      }
+      // DMs default to "dm-only" for new characters
+    } else {
+      // Editing existing character - use current visibility
+      defaultVisibility = character.visibility || "dm-only";
+    }
+    
+    // Allow viewing even if can't edit (for NPCs/antagonists visible to players)
     setFormData({
       name: character?.name || "",
       description: character?.description || "",
       alignment: character?.alignment || "",
-      character_sheet: character?.character_sheet || null
+      character_sheet: character?.character_sheet || null,
+      visibility: defaultVisibility,
+      player_user_id: character?.player_user_id || null
     });
     setOpenDialog(true);
   };
@@ -140,18 +265,67 @@ export default function CharacterListPage({ type }) {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingCharacter(null);
-    setFormData({ name: "", description: "", alignment: "", character_sheet: null });
+    setFormData({ 
+      name: "", 
+      description: "", 
+      alignment: "", 
+      character_sheet: null, 
+      visibility: "dm-only",
+      player_user_id: null
+    });
   };
 
   const handleSubmit = async () => {
     try {
-      const payload = {
-        type,
-        name: formData.name,
-        description: formData.description,
-        alignment: formData.alignment,
-        character_sheet: formData.character_sheet
-      };
+      const isPlayer = userRole === "player";
+      const isOwnCharacter = editingCharacter?.type === "player" && editingCharacter?.player_user_id === currentUserId;
+      const isOwnNPC = editingCharacter && (editingCharacter.type === "npc" || editingCharacter.type === "antagonist") && editingCharacter.created_by_user_id === currentUserId;
+      const isNewCharacter = !editingCharacter;
+      
+      let payload;
+      if (isPlayer && isOwnCharacter) {
+        // Players can update description, character_sheet, and visibility for their own player character
+        payload = {
+          description: formData.description,
+          character_sheet: formData.character_sheet,
+          visibility: formData.visibility || "dm-only"
+        };
+      } else if (isPlayer && isOwnNPC) {
+        // Players editing NPCs/antagonists they created can update everything except type and player_user_id
+        payload = {
+          type: editingCharacter.type, // Keep original type
+          name: formData.name,
+          description: formData.description,
+          alignment: formData.alignment,
+          character_sheet: formData.character_sheet,
+          visibility: formData.visibility || "player-visible"
+        };
+      } else if (isPlayer && isNewCharacter) {
+        // Players creating new NPCs/antagonists can set all fields except player_user_id
+        payload = {
+          type,
+          name: formData.name,
+          description: formData.description,
+          alignment: formData.alignment,
+          character_sheet: formData.character_sheet,
+          visibility: formData.visibility || "player-visible" // Default to player-visible for player-created NPCs/antagonists
+        };
+      } else {
+        // DMs can update everything
+        payload = {
+          type,
+          name: formData.name,
+          description: formData.description,
+          alignment: formData.alignment,
+          character_sheet: formData.character_sheet,
+          visibility: formData.visibility
+        };
+        
+        // Only include player_user_id for player characters and when DM is editing
+        if (type === "player" && userRole === "dm") {
+          payload.player_user_id = formData.player_user_id || null;
+        }
+      }
 
       if (editingCharacter) {
         await apiClient.put(`/api/campaigns/${campaignId}/characters/${editingCharacter.id}`, payload);
@@ -184,7 +358,19 @@ export default function CharacterListPage({ type }) {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString();
+    if (!dateString) return "N/A";
+    try {
+      // If it's a date-only string (YYYY-MM-DD), parse it as local date to avoid timezone issues
+      if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [year, month, day] = dateString.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // month is 0-indexed in Date constructor
+        return date.toLocaleDateString();
+      }
+      // For datetime strings, parse normally but use local timezone
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return dateString;
+    }
   };
 
   if (loading) {
@@ -282,9 +468,29 @@ export default function CharacterListPage({ type }) {
                   }}
                 >
                   <TableCell>
-                    <Typography variant="subtitle1" fontWeight="medium">
-                      {character.name}
-                    </Typography>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Typography variant="subtitle1" fontWeight="medium">
+                        {character.name}
+                      </Typography>
+                      {character.player_user_id && type === "player" && (
+                        <Chip 
+                          label="Assigned" 
+                          size="small" 
+                          color="success" 
+                          variant="outlined"
+                          sx={{ fontSize: "0.7rem", height: 20 }}
+                        />
+                      )}
+                      {character.player_user_id === currentUserId && (
+                        <Chip 
+                          label="Your Character" 
+                          size="small" 
+                          color="primary" 
+                          variant="filled"
+                          sx={{ fontSize: "0.7rem", height: 20 }}
+                        />
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell>
                     {character.alignment && (
@@ -305,25 +511,43 @@ export default function CharacterListPage({ type }) {
                     />
                   </TableCell>
                   <TableCell>
-                    <Typography color="text.secondary">
-                      {formatDate(character.created_at)}
-                    </Typography>
+                    <Box>
+                      <Typography color="text.secondary" variant="body2">
+                        {formatDate(character.created_at)}
+                      </Typography>
+                      {character.created_by_username && (
+                        <Typography color="text.secondary" variant="caption" display="block">
+                          by {character.created_by_username}
+                        </Typography>
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                    <IconButton
-                      onClick={() => handleOpenDialog(character)}
-                      color={config.color}
-                      size="small"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      onClick={() => handleDelete(character.id)}
-                      color="error"
-                      size="small"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                    {/* Show edit button if user is DM, owns the character, or created the NPC/antagonist */}
+                    {(userRole === "dm" || 
+                      (character.type === "player" && character.player_user_id === currentUserId) ||
+                      ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
+                    ) && (
+                      <IconButton
+                        onClick={() => handleOpenDialog(character)}
+                        color={config.color}
+                        size="small"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    )}
+                    {/* Only DMs can delete, or players can delete NPCs/antagonists they created */}
+                    {(userRole === "dm" || 
+                      ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
+                    ) && (
+                      <IconButton
+                        onClick={() => handleDelete(character.id)}
+                        color="error"
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    )}
                   </TableCell>
                 </TableRow>
               ))
@@ -332,14 +556,17 @@ export default function CharacterListPage({ type }) {
         </Table>
       </TableContainer>
 
-      <Fab
-        color={config.color}
-        aria-label={`add ${config.label.toLowerCase()}`}
-        sx={{ position: "fixed", bottom: 16, right: 16 }}
-        onClick={() => handleOpenDialog()}
-      >
-        <AddIcon />
-      </Fab>
+      {/* Allow players to create NPCs/antagonists, and all participants can create player characters */}
+      {(userRole === "dm" || type === "player" || (type === "npc" && userRole === "player") || (type === "antagonist" && userRole === "player")) && (
+        <Fab
+          color={config.color}
+          aria-label={`add ${config.label.toLowerCase()}`}
+          sx={{ position: "fixed", bottom: 16, right: 16 }}
+          onClick={() => handleOpenDialog()}
+        >
+          <AddIcon />
+        </Fab>
+      )}
 
       <Dialog 
         open={openDialog} 
@@ -352,29 +579,84 @@ export default function CharacterListPage({ type }) {
           {editingCharacter ? `Edit ${config.label}` : `New ${config.label}`}
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
             {editingCharacter ? "Update" : "Create"} a {config.label.toLowerCase()} for this campaign
+            {editingCharacter && editingCharacter.created_by_username && (
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                Created by {editingCharacter.created_by_username} on {formatDate(editingCharacter.created_at)}
+                {editingCharacter.last_updated_by_username && editingCharacter.last_updated_by_username !== editingCharacter.created_by_username && (
+                  <> • Last updated by {editingCharacter.last_updated_by_username} on {formatDate(editingCharacter.updated_at)}</>
+                )}
+              </Typography>
+            )}
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
+            {/* Name - read-only for players editing their own character */}
             <TextField
-              autoFocus
+              autoFocus={userRole === "dm"}
               label={`${config.label} Name`}
               fullWidth
               variant="outlined"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
+              disabled={
+                userRole === "player" && 
+                editingCharacter && 
+                editingCharacter.type === "player" && 
+                editingCharacter.player_user_id === currentUserId
+              }
+              helperText={
+                userRole === "player" && editingCharacter && editingCharacter.type === "player" && editingCharacter.player_user_id === currentUserId
+                  ? "Name cannot be changed"
+                  : userRole === "player" && editingCharacter && editingCharacter.type !== "player" && editingCharacter.created_by_user_id !== currentUserId
+                  ? "Read-only view"
+                  : ""
+              }
             />
 
-            <TextField
-              label="Alignment"
-              fullWidth
-              variant="outlined"
-              value={formData.alignment}
-              onChange={(e) => setFormData({ ...formData, alignment: e.target.value })}
-              placeholder="e.g., Lawful Good, Chaotic Evil"
-              helperText="D&D alignment (optional)"
-            />
+            {/* Alignment - hidden for players editing their own player character, but editable for NPCs/antagonists they created */}
+            {!(userRole === "player" && editingCharacter && editingCharacter.type === "player" && editingCharacter.player_user_id === currentUserId) && (
+              <TextField
+                label="Alignment"
+                fullWidth
+                variant="outlined"
+                value={formData.alignment}
+                onChange={(e) => setFormData({ ...formData, alignment: e.target.value })}
+                placeholder="e.g., Lawful Good, Chaotic Evil"
+                helperText="D&D alignment (optional)"
+                disabled={
+                  userRole === "player" && 
+                  editingCharacter && 
+                  editingCharacter.type !== "player" && 
+                  editingCharacter.created_by_user_id !== currentUserId
+                }
+              />
+            )}
+
+            {/* Player Assignment - DM only, player type only */}
+            {type === "player" && userRole === "dm" && (
+              <FormControl fullWidth>
+                <InputLabel>Assign to Player</InputLabel>
+                <Select
+                  value={formData.player_user_id || ""}
+                  onChange={(e) => setFormData({ ...formData, player_user_id: e.target.value || null })}
+                  label="Assign to Player"
+                >
+                  <MenuItem value="">Unassigned</MenuItem>
+                  {participants
+                    .filter(p => p.role === "player")
+                    .map((participant) => (
+                      <MenuItem key={participant.user_id} value={participant.user_id}>
+                        {participant.username} ({participant.email})
+                      </MenuItem>
+                    ))}
+                </Select>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                  Assign this character to a player. Unassigned characters can be claimed by players.
+                </Typography>
+              </FormControl>
+            )}
 
             <Box>
               <Typography variant="subtitle2" gutterBottom>
@@ -384,6 +666,13 @@ export default function CharacterListPage({ type }) {
                 value={formData.description}
                 onChange={(html) => setFormData({ ...formData, description: html })}
                 placeholder={`Enter ${config.label.toLowerCase()} description...`}
+                campaignId={campaignId}
+                readOnly={
+                  userRole === "player" && 
+                  editingCharacter && 
+                  editingCharacter.type !== "player" && 
+                  editingCharacter.created_by_user_id !== currentUserId
+                }
               />
             </Box>
 
@@ -395,20 +684,102 @@ export default function CharacterListPage({ type }) {
                 value={formData.character_sheet}
                 onChange={(sheet) => setFormData({ ...formData, character_sheet: sheet })}
                 type={type}
+                readOnly={
+                  userRole === "player" && 
+                  editingCharacter && 
+                  editingCharacter.type !== "player" && 
+                  editingCharacter.created_by_user_id !== currentUserId
+                }
               />
             </Box>
+
+            {/* Visibility - for players editing their own player character, show a simplified visibility control */}
+            {userRole === "player" && editingCharacter && editingCharacter.type === "player" && editingCharacter.player_user_id === currentUserId ? (
+              <Box>
+                <FormControl component="fieldset">
+                  <FormLabel component="legend">Share Updates with Other Players</FormLabel>
+                  <RadioGroup
+                    row
+                    value={formData.visibility || "dm-only"}
+                    onChange={(e) => setFormData({ ...formData, visibility: e.target.value })}
+                  >
+                    <FormControlLabel 
+                      value="dm-only" 
+                      control={<Radio />} 
+                      label="DM Only" 
+                    />
+                    <FormControlLabel 
+                      value="player-visible" 
+                      control={<Radio />} 
+                      label="DM & Players" 
+                    />
+                  </RadioGroup>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                    {formData.visibility === "dm-only" && "Only the DM will see your character updates"}
+                    {formData.visibility === "player-visible" && "All players and the DM will see your character updates"}
+                  </Typography>
+                </FormControl>
+              </Box>
+            ) : (
+              <Box>
+                <FormControl component="fieldset">
+                  <FormLabel component="legend">Visibility</FormLabel>
+                  <RadioGroup
+                    row
+                    value={formData.visibility}
+                    onChange={(e) => setFormData({ ...formData, visibility: e.target.value })}
+                    disabled={
+                      userRole === "player" && 
+                      editingCharacter && 
+                      editingCharacter.type !== "player" && 
+                      editingCharacter.created_by_user_id !== currentUserId
+                    }
+                  >
+                    <FormControlLabel 
+                      value="dm-only" 
+                      control={<Radio />} 
+                      label="DM Only" 
+                    />
+                    <FormControlLabel 
+                      value="player-visible" 
+                      control={<Radio />} 
+                      label="DM & Players" 
+                    />
+                    {userRole === "dm" && (
+                      <FormControlLabel 
+                        value="hidden" 
+                        control={<Radio />} 
+                        label="Hidden" 
+                      />
+                    )}
+                  </RadioGroup>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                    {formData.visibility === "dm-only" && "Only DMs can see this character"}
+                    {formData.visibility === "player-visible" && "Both DMs and players can see this character"}
+                    {formData.visibility === "hidden" && "Hidden from all participants"}
+                  </Typography>
+                </FormControl>
+              </Box>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSubmit} 
-            variant="contained"
-            color={config.color}
-            disabled={!formData.name.trim()}
-          >
-            {editingCharacter ? "Update" : "Create"} {config.label}
-          </Button>
+          <Button onClick={handleCloseDialog}>Close</Button>
+          {/* Show Save button if user can edit or is creating new entity */}
+          {(userRole === "dm" || 
+            (editingCharacter?.type === "player" && editingCharacter?.player_user_id === currentUserId) ||
+            ((editingCharacter?.type === "npc" || editingCharacter?.type === "antagonist") && editingCharacter?.created_by_user_id === currentUserId) ||
+            (!editingCharacter && (type === "player" || type === "npc" || type === "antagonist"))
+          ) && (
+            <Button 
+              onClick={handleSubmit} 
+              variant="contained"
+              color={config.color}
+              disabled={!formData.name.trim()}
+            >
+              {editingCharacter ? "Update" : "Create"} {config.label}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

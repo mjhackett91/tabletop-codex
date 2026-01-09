@@ -135,7 +135,19 @@ export default function Campaigns() {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString();
+    if (!dateString) return "N/A";
+    try {
+      // If it's a date-only string (YYYY-MM-DD), parse it as local date to avoid timezone issues
+      if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [year, month, day] = dateString.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // month is 0-indexed in Date constructor
+        return date.toLocaleDateString();
+      }
+      // For datetime strings, parse normally but use local timezone
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return dateString;
+    }
   };
 
   if (loading) {

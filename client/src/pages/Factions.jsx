@@ -1,6 +1,6 @@
 // client/src/pages/Factions.jsx - Factions management page
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -26,6 +26,11 @@ import {
   AccordionSummary,
   AccordionDetails,
   MenuItem,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -47,6 +52,7 @@ const ALIGNMENTS = [
 
 export default function Factions() {
   const { id: campaignId } = useParams();
+  const location = useLocation();
   const [factions, setFactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
@@ -55,7 +61,8 @@ export default function Factions() {
     name: "", 
     description: "", 
     alignment: "",
-    goals: ""
+    goals: "",
+    visibility: "dm-only"
   });
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
 
@@ -87,6 +94,28 @@ export default function Factions() {
     fetchFactions();
   }, [campaignId]);
 
+  // Check for navigation state to auto-open entity dialog
+  useEffect(() => {
+    if (location.state?.openEntityId && factions.length > 0) {
+      const entityId = location.state.openEntityId;
+      const entityType = location.state.entityType;
+      
+      if (entityType === "faction") {
+        // Normalize IDs to numbers for comparison (handle both string and number IDs)
+        const entityIdNum = typeof entityId === 'string' ? parseInt(entityId, 10) : entityId;
+        const faction = factions.find(f => {
+          const facIdNum = typeof f.id === 'string' ? parseInt(f.id, 10) : f.id;
+          return facIdNum === entityIdNum;
+        });
+        if (faction) {
+          handleOpenDialog(faction);
+          // Clear the state to prevent re-opening on re-render
+          window.history.replaceState({}, document.title);
+        }
+      }
+    }
+  }, [location.state, factions]);
+
   const handleOpenDialog = (faction = null) => {
     if (faction) {
       setEditingFaction(faction);
@@ -94,7 +123,8 @@ export default function Factions() {
         name: faction.name || "",
         description: faction.description || "",
         alignment: faction.alignment || "",
-        goals: faction.goals || ""
+        goals: faction.goals || "",
+        visibility: faction.visibility || "dm-only"
       });
     } else {
       setEditingFaction(null);
@@ -102,7 +132,8 @@ export default function Factions() {
         name: "",
         description: "",
         alignment: "",
-        goals: ""
+        goals: "",
+        visibility: "dm-only"
       });
     }
     setOpenDialog(true);
@@ -111,7 +142,7 @@ export default function Factions() {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingFaction(null);
-    setFormData({ name: "", description: "", alignment: "", goals: "" });
+    setFormData({ name: "", description: "", alignment: "", goals: "", visibility: "dm-only" });
   };
 
   const handleSubmit = async () => {
@@ -129,7 +160,8 @@ export default function Factions() {
         name: formData.name.trim(),
         description: formData.description || "",
         alignment: formData.alignment || null,
-        goals: formData.goals || ""
+        goals: formData.goals || "",
+        visibility: formData.visibility
       };
 
       if (editingFaction) {
@@ -189,7 +221,18 @@ export default function Factions() {
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString();
+    try {
+      // If it's a date-only string (YYYY-MM-DD), parse it as local date to avoid timezone issues
+      if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [year, month, day] = dateString.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // month is 0-indexed in Date constructor
+        return date.toLocaleDateString();
+      }
+      // For datetime strings, parse normally but use local timezone
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return dateString;
+    }
   };
 
   return (
@@ -336,9 +379,16 @@ export default function Factions() {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography color="text.secondary">
-                      {formatDate(faction.created_at)}
-                    </Typography>
+                    <Box>
+                      <Typography color="text.secondary" variant="body2">
+                        {formatDate(faction.created_at)}
+                      </Typography>
+                      {faction.created_by_username && (
+                        <Typography color="text.secondary" variant="caption" display="block">
+                          by {faction.created_by_username}
+                        </Typography>
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                     <IconButton
@@ -382,6 +432,14 @@ export default function Factions() {
           {editingFaction ? "Edit Faction" : "New Faction"}
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
             {editingFaction ? "Update" : "Create"} a faction for this campaign
+            {editingFaction && editingFaction.created_by_username && (
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                Created by {editingFaction.created_by_username} on {formatDate(editingFaction.created_at)}
+                {editingFaction.last_updated_by_username && editingFaction.last_updated_by_username !== editingFaction.created_by_username && (
+                  <> • Last updated by {editingFaction.last_updated_by_username} on {formatDate(editingFaction.updated_at)}</>
+                )}
+              </Typography>
+            )}
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
@@ -418,6 +476,7 @@ export default function Factions() {
                 value={formData.description}
                 onChange={(html) => setFormData({ ...formData, description: html })}
                 placeholder="Enter faction description..."
+                campaignId={campaignId}
               />
             </Box>
 
@@ -432,6 +491,38 @@ export default function Factions() {
               placeholder="List the faction's goals, motivations, and current objectives..."
               helperText="What does this faction want to achieve?"
             />
+
+            <Box>
+              <FormControl component="fieldset">
+                <FormLabel component="legend">Visibility</FormLabel>
+                <RadioGroup
+                  row
+                  value={formData.visibility}
+                  onChange={(e) => setFormData({ ...formData, visibility: e.target.value })}
+                >
+                  <FormControlLabel 
+                    value="dm-only" 
+                    control={<Radio />} 
+                    label="DM Only" 
+                  />
+                  <FormControlLabel 
+                    value="player-visible" 
+                    control={<Radio />} 
+                    label="DM & Players" 
+                  />
+                  <FormControlLabel 
+                    value="hidden" 
+                    control={<Radio />} 
+                    label="Hidden" 
+                  />
+                </RadioGroup>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                  {formData.visibility === "dm-only" && "Only DMs can see this faction"}
+                  {formData.visibility === "player-visible" && "Both DMs and players can see this faction"}
+                  {formData.visibility === "hidden" && "Hidden from all participants"}
+                </Typography>
+              </FormControl>
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions>

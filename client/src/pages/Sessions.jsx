@@ -32,6 +32,10 @@ import {
   InputLabel,
   FormControl,
   CircularProgress,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -79,7 +83,8 @@ export default function Sessions() {
     notes_locations: "",
     notes_factions: "",
     notes_world_info: "",
-    notes_quests: ""
+    notes_quests: "",
+    visibility: "dm-only"
   });
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [entities, setEntities] = useState({
@@ -102,6 +107,32 @@ export default function Sessions() {
     quests: ""
   });
   const [postingNotes, setPostingNotes] = useState(false);
+  const [playerNotes, setPlayerNotes] = useState([]);
+  const [userRole, setUserRole] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [playerNoteContent, setPlayerNoteContent] = useState("");
+  const [playerNoteVisibility, setPlayerNoteVisibility] = useState("dm-only");
+  const [editingPlayerNote, setEditingPlayerNote] = useState(null);
+  const [addingPlayerNote, setAddingPlayerNote] = useState(false);
+
+  // Fetch user role
+  const fetchUserRole = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split(".")[1]));
+          setCurrentUserId(payload.userId);
+        } catch (e) {
+          console.error("Error parsing token:", e);
+        }
+      }
+      const roleData = await apiClient.get(`/api/campaigns/${campaignId}/my-role`);
+      setUserRole(roleData?.role || null);
+    } catch (error) {
+      console.error("Failed to fetch user role:", error);
+    }
+  };
 
   // Fetch sessions
   const fetchSessions = async () => {
@@ -127,8 +158,25 @@ export default function Sessions() {
     }
   };
 
+  // Fetch player notes for a session
+  const fetchPlayerNotes = async (sessionId) => {
+    if (!sessionId) {
+      setPlayerNotes([]);
+      return;
+    }
+
+    try {
+      const notes = await apiClient.get(`/api/campaigns/${campaignId}/sessions/${sessionId}/player-notes`);
+      setPlayerNotes(notes || []);
+    } catch (error) {
+      console.error("Failed to fetch player notes:", error);
+      setPlayerNotes([]);
+    }
+  };
+
   useEffect(() => {
     fetchSessions();
+    fetchUserRole();
   }, [campaignId]);
 
   // Fetch entities for posting notes
@@ -169,6 +217,13 @@ export default function Sessions() {
   useEffect(() => {
     if (openDialog && editingSession) {
       fetchEntities();
+      fetchPlayerNotes(editingSession.id);
+    } else if (openDialog) {
+      setPlayerNotes([]);
+      setPlayerNoteContent("");
+      setPlayerNoteVisibility("dm-only");
+      setEditingPlayerNote(null);
+      setAddingPlayerNote(false);
     }
   }, [openDialog, editingSession, campaignId]);
 
@@ -186,7 +241,8 @@ export default function Sessions() {
         notes_locations: session.notes_locations || "",
         notes_factions: session.notes_factions || "",
         notes_world_info: session.notes_world_info || "",
-        notes_quests: session.notes_quests || ""
+        notes_quests: session.notes_quests || "",
+        visibility: session.visibility || (userRole === "player" ? "player-visible" : "dm-only")
       });
     } else {
       setEditingSession(null);
@@ -201,7 +257,8 @@ export default function Sessions() {
         notes_locations: "",
         notes_factions: "",
         notes_world_info: "",
-        notes_quests: ""
+        notes_quests: "",
+        visibility: userRole === "player" ? "player-visible" : "dm-only"
       });
     }
     setSelectedEntities({
@@ -231,7 +288,8 @@ export default function Sessions() {
       notes_locations: "",
       notes_factions: "",
       notes_world_info: "",
-      notes_quests: ""
+      notes_quests: "",
+      visibility: "dm-only"
     });
     setSelectedEntities({
       characters: "",
@@ -242,6 +300,11 @@ export default function Sessions() {
       world_info: "",
       quests: ""
     });
+    setPlayerNotes([]);
+    setPlayerNoteContent("");
+    setPlayerNoteVisibility("dm-only");
+    setEditingPlayerNote(null);
+    setAddingPlayerNote(false);
   };
 
   const handleSubmit = async () => {
@@ -257,7 +320,8 @@ export default function Sessions() {
         notes_locations: formData.notes_locations || null,
         notes_factions: formData.notes_factions || null,
         notes_world_info: formData.notes_world_info || null,
-        notes_quests: formData.notes_quests || null
+        notes_quests: formData.notes_quests || null,
+        visibility: formData.visibility
       };
 
       if (editingSession) {
@@ -318,6 +382,13 @@ export default function Sessions() {
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     try {
+      // If it's a date-only string (YYYY-MM-DD), parse it as local date to avoid timezone issues
+      if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [year, month, day] = dateString.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // month is 0-indexed in Date constructor
+        return date.toLocaleDateString();
+      }
+      // For datetime strings, parse normally but use local timezone
       return new Date(dateString).toLocaleDateString();
     } catch {
       return dateString;
@@ -432,7 +503,7 @@ export default function Sessions() {
 
       setSnackbar({
         open: true,
-        message: `Notes posted to ${entityName} successfully! Check the ${getSectionLabel(sectionKey).slice(0, -1)}'s description field to see them.`,
+        message: `Notes posted to ${entityName} successfully! Check the ${getSectionLabel(sectionKey).slice(0, -1)}'s description field to see them. Note: Players will only see these notes if the ${getSectionLabel(sectionKey).slice(0, -1)}'s visibility is set to "DM & Players".`,
         severity: "success"
       });
 
@@ -448,6 +519,92 @@ export default function Sessions() {
     } finally {
       setPostingNotes(false);
     }
+  };
+
+  // Handle adding/updating player note
+  const handleSavePlayerNote = async () => {
+    if (!editingSession || !playerNoteContent.trim()) {
+      return;
+    }
+
+    try {
+      if (editingPlayerNote) {
+        // Update existing note
+        await apiClient.put(
+          `/api/campaigns/${campaignId}/sessions/${editingSession.id}/player-notes/${editingPlayerNote.id}`,
+          {
+            note_content: playerNoteContent.trim(),
+            visibility: playerNoteVisibility
+          }
+        );
+        setSnackbar({
+          open: true,
+          message: "Player note updated successfully",
+          severity: "success"
+        });
+      } else {
+        // Create new note
+        await apiClient.post(
+          `/api/campaigns/${campaignId}/sessions/${editingSession.id}/player-notes`,
+          {
+            note_content: playerNoteContent.trim(),
+            visibility: playerNoteVisibility
+          }
+        );
+        setSnackbar({
+          open: true,
+          message: "Player note added successfully",
+          severity: "success"
+        });
+      }
+      
+      await fetchPlayerNotes(editingSession.id);
+      setPlayerNoteContent("");
+      setPlayerNoteVisibility("dm-only");
+      setEditingPlayerNote(null);
+      setAddingPlayerNote(false);
+    } catch (error) {
+      console.error("Failed to save player note:", error);
+      setSnackbar({
+        open: true,
+        message: error.message || "Failed to save player note",
+        severity: "error"
+      });
+    }
+  };
+
+  // Handle deleting player note
+  const handleDeletePlayerNote = async (noteId) => {
+    if (!editingSession || !window.confirm("Are you sure you want to delete this note?")) {
+      return;
+    }
+
+    try {
+      await apiClient.delete(
+        `/api/campaigns/${campaignId}/sessions/${editingSession.id}/player-notes/${noteId}`
+      );
+      setSnackbar({
+        open: true,
+        message: "Player note deleted successfully",
+        severity: "success"
+      });
+      await fetchPlayerNotes(editingSession.id);
+    } catch (error) {
+      console.error("Failed to delete player note:", error);
+      setSnackbar({
+        open: true,
+        message: error.message || "Failed to delete player note",
+        severity: "error"
+      });
+    }
+  };
+
+  // Handle editing player note
+  const handleEditPlayerNote = (note) => {
+    setEditingPlayerNote(note);
+    setPlayerNoteContent(note.note_content || "");
+    setPlayerNoteVisibility(note.visibility || "dm-only");
+    setAddingPlayerNote(true);
   };
 
   return (
@@ -520,9 +677,16 @@ export default function Sessions() {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography color="text.secondary">
-                      {formatDate(session.date_played)}
-                    </Typography>
+                    <Box>
+                      <Typography color="text.secondary">
+                        {formatDate(session.date_played)}
+                      </Typography>
+                      {session.created_by_username && (
+                        <Typography color="text.secondary" variant="caption" display="block">
+                          by {session.created_by_username}
+                        </Typography>
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell>
                     <Box
@@ -545,20 +709,26 @@ export default function Sessions() {
                     </Typography>
                   </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                    <IconButton
-                      onClick={() => handleOpenDialog(session)}
-                      color="primary"
-                      size="small"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      onClick={() => handleDelete(session.id)}
-                      color="error"
-                      size="small"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                    {/* Show edit button if user is DM or created the session */}
+                    {(userRole === "dm" || session.created_by_user_id === currentUserId) && (
+                      <IconButton
+                        onClick={() => handleOpenDialog(session)}
+                        color="primary"
+                        size="small"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    )}
+                    {/* DMs can delete any session, players can delete their own */}
+                    {(userRole === "dm" || session.created_by_user_id === currentUserId) && (
+                      <IconButton
+                        onClick={() => handleDelete(session.id)}
+                        color="error"
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    )}
                   </TableCell>
                 </TableRow>
               ))
@@ -567,6 +737,7 @@ export default function Sessions() {
         </Table>
       </TableContainer>
 
+      {/* Both DMs and players can create sessions */}
       <Fab
         color="primary"
         aria-label="add session"
@@ -589,6 +760,14 @@ export default function Sessions() {
           {editingSession ? "Edit Session" : "New Session"}
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
             {editingSession ? "Update" : "Create"} a session entry with organized note sections
+            {editingSession && editingSession.created_by_username && (
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                Created by {editingSession.created_by_username} on {formatDate(editingSession.created_at)}
+                {editingSession.last_updated_by_username && editingSession.last_updated_by_username !== editingSession.created_by_username && (
+                  <> • Last updated by {editingSession.last_updated_by_username} on {formatDate(editingSession.updated_at)}</>
+                )}
+              </Typography>
+            )}
           </Typography>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, display: "flex", flexDirection: "column", height: "100%" }}>
@@ -608,8 +787,18 @@ export default function Sessions() {
                 label="Date Played"
                 type="date"
                 variant="outlined"
-                value={formData.date_played}
-                onChange={(e) => setFormData({ ...formData, date_played: e.target.value })}
+                value={formData.date_played ? (() => {
+                  // Ensure date is in YYYY-MM-DD format for date input
+                  // If it's a full datetime string, extract just the date part
+                  if (formData.date_played.includes('T')) {
+                    return formData.date_played.split('T')[0];
+                  }
+                  return formData.date_played;
+                })() : ""}
+                onChange={(e) => {
+                  // Store as YYYY-MM-DD format (date only, no time)
+                  setFormData({ ...formData, date_played: e.target.value || null });
+                }}
                 InputLabelProps={{ shrink: true }}
                 sx={{ flex: 1 }}
                 size="small"
@@ -667,6 +856,7 @@ export default function Sessions() {
                     value={formData.summary}
                     onChange={(html) => setFormData({ ...formData, summary: html })}
                     placeholder="Enter session summary..."
+                    campaignId={campaignId}
                   />
                 </Box>
               )}
@@ -766,21 +956,201 @@ export default function Sessions() {
                     value={getSectionValue(SECTIONS[activeTab].key)}
                     onChange={(html) => setSectionValue(SECTIONS[activeTab].key, html)}
                     placeholder={`Enter notes about ${getSectionLabel(SECTIONS[activeTab].key).toLowerCase()}...`}
+                    campaignId={campaignId}
                   />
                 </Box>
               )}
             </Box>
           </Box>
+          
+          <Box sx={{ p: 2, borderTop: 1, borderColor: "divider" }}>
+            <FormControl component="fieldset" fullWidth>
+              <FormLabel component="legend">Visibility</FormLabel>
+              <RadioGroup
+                row
+                value={formData.visibility}
+                onChange={(e) => setFormData({ ...formData, visibility: e.target.value })}
+              >
+                <FormControlLabel 
+                  value="dm-only" 
+                  control={<Radio />} 
+                  label="DM Only" 
+                />
+                <FormControlLabel 
+                  value="player-visible" 
+                  control={<Radio />} 
+                  label="DM & Players" 
+                />
+                <FormControlLabel 
+                  value="hidden" 
+                  control={<Radio />} 
+                  label="Hidden" 
+                />
+              </RadioGroup>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                {formData.visibility === "dm-only" && "Only DMs can see this session"}
+                {formData.visibility === "player-visible" && "Both DMs and players can see this session"}
+                {formData.visibility === "hidden" && "Hidden from all participants"}
+              </Typography>
+            </FormControl>
+          </Box>
+
+          {/* Player Notes Section */}
+          {editingSession && (
+            <Box sx={{ p: 2, borderTop: 1, borderColor: "divider" }}>
+              <Typography variant="h6" gutterBottom>
+                Player Notes
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Notes added by players. DMs can see all notes, players can see notes marked as "Player Visible".
+              </Typography>
+
+              {/* Existing Player Notes */}
+              {playerNotes.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                  {playerNotes.map((note) => (
+                    <Paper
+                      key={note.id}
+                      sx={{
+                        p: 2,
+                        mb: 2,
+                        bgcolor: note.user_id === currentUserId ? "action.selected" : "background.paper",
+                        border: note.user_id === currentUserId ? 1 : 0,
+                        borderColor: "primary.main"
+                      }}
+                    >
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1 }}>
+                        <Box>
+                          <Typography variant="subtitle2" fontWeight="medium">
+                            {note.username}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {formatDate(note.created_at)}
+                            {note.visibility === "player-visible" && " • Visible to all players"}
+                            {note.visibility === "dm-only" && " • DM only"}
+                          </Typography>
+                        </Box>
+                        {note.user_id === currentUserId && (
+                          <Box>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleEditPlayerNote(note)}
+                              color="primary"
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleDeletePlayerNote(note.id)}
+                              color="error"
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+                        )}
+                      </Box>
+                      <Box
+                        sx={{
+                          "& p": { margin: 0 },
+                          "& *": { display: "inline" }
+                        }}
+                        dangerouslySetInnerHTML={{ __html: note.note_content || "" }}
+                      />
+                    </Paper>
+                  ))}
+                </Box>
+              )}
+
+              {/* Add/Edit Player Note Form */}
+              {userRole === "player" && (
+                <Box>
+                  {!addingPlayerNote ? (
+                    <Button
+                      variant="outlined"
+                      startIcon={<AddIcon />}
+                      onClick={() => {
+                        setAddingPlayerNote(true);
+                        setEditingPlayerNote(null);
+                        setPlayerNoteContent("");
+                        setPlayerNoteVisibility("dm-only");
+                      }}
+                      fullWidth
+                    >
+                      Add Your Note
+                    </Button>
+                  ) : (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <Typography variant="subtitle2">
+                        {editingPlayerNote ? "Edit Your Note" : "Add Your Note"}
+                      </Typography>
+                      <RichTextEditor
+                        value={playerNoteContent}
+                        onChange={(html) => setPlayerNoteContent(html)}
+                        placeholder="Enter your note about this session..."
+                        campaignId={campaignId}
+                      />
+                      <FormControl component="fieldset">
+                        <FormLabel component="legend">Visibility</FormLabel>
+                        <RadioGroup
+                          row
+                          value={playerNoteVisibility}
+                          onChange={(e) => setPlayerNoteVisibility(e.target.value)}
+                        >
+                          <FormControlLabel 
+                            value="dm-only" 
+                            control={<Radio />} 
+                            label="DM Only" 
+                          />
+                          <FormControlLabel 
+                            value="player-visible" 
+                            control={<Radio />} 
+                            label="DM & Players" 
+                          />
+                        </RadioGroup>
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                          {playerNoteVisibility === "dm-only" && "Only the DM will see this note"}
+                          {playerNoteVisibility === "player-visible" && "All players and the DM will see this note"}
+                        </Typography>
+                      </FormControl>
+                      <Box sx={{ display: "flex", gap: 1 }}>
+                        <Button
+                          variant="contained"
+                          onClick={handleSavePlayerNote}
+                          disabled={!playerNoteContent.trim()}
+                        >
+                          {editingPlayerNote ? "Update" : "Add"} Note
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          onClick={() => {
+                            setAddingPlayerNote(false);
+                            setEditingPlayerNote(null);
+                            setPlayerNoteContent("");
+                            setPlayerNoteVisibility("dm-only");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </Box>
+                    </Box>
+                  )}
+                </Box>
+              )}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSubmit} 
-            variant="contained"
-            color="primary"
-          >
-            {editingSession ? "Update" : "Create"} Session
-          </Button>
+          {/* Both DMs and players can create/update sessions (players can only edit their own) */}
+          {(userRole === "dm" || !editingSession || (editingSession && editingSession.created_by_user_id === currentUserId)) && (
+            <Button 
+              onClick={handleSubmit} 
+              variant="contained"
+              color="primary"
+            >
+              {editingSession ? "Update" : "Create"} Session
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

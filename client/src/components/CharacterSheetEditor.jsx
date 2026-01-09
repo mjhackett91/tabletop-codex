@@ -131,7 +131,7 @@ const DEFAULT_SHEET = {
   backstory: "",
 };
 
-export default function CharacterSheetEditor({ value, onChange, type = "player" }) {
+export default function CharacterSheetEditor({ value, onChange, type = "player", readOnly = false }) {
   const [sheet, setSheet] = useState(value || DEFAULT_SHEET);
 
   // Sync with external value changes (e.g., when editing different character)
@@ -153,6 +153,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
   }, [value]);
 
   const updateSheet = (updates) => {
+    if (readOnly) return; // Don't update if read-only
     const newSheet = { ...sheet, ...updates };
     setSheet(newSheet);
     if (onChange) {
@@ -168,36 +169,42 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
   };
 
   const toggleSkillProficiency = (skillId) => {
+    if (readOnly) return;
     updateSheet({
       skills: { ...sheet.skills, [skillId]: !sheet.skills[skillId] }
     });
   };
 
   const toggleSavingThrowProficiency = (ability) => {
+    if (readOnly) return;
     updateSheet({
       savingThrows: { ...sheet.savingThrows, [ability]: !sheet.savingThrows[ability] }
     });
   };
 
   const addListItem = (listName, item = "") => {
+    if (readOnly) return;
     updateSheet({
       [listName]: [...(sheet[listName] || []), item]
     });
   };
 
   const removeListItem = (listName, index) => {
+    if (readOnly) return;
     const newList = [...(sheet[listName] || [])];
     newList.splice(index, 1);
     updateSheet({ [listName]: newList });
   };
 
   const updateListItem = (listName, index, value) => {
+    if (readOnly) return;
     const newList = [...(sheet[listName] || [])];
     newList[index] = value;
     updateSheet({ [listName]: newList });
   };
 
   const addEquipmentItem = () => {
+    if (readOnly) return;
     const newItem = { name: "", type: "", modifiers: {} };
     updateSheet({
       equipment: [...(sheet.equipment || []), newItem]
@@ -205,12 +212,14 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
   };
 
   const updateEquipmentItem = (index, updatedItem) => {
+    if (readOnly) return;
     const newEquipment = [...(sheet.equipment || [])];
     newEquipment[index] = updatedItem;
     updateSheet({ equipment: newEquipment });
   };
 
   const removeEquipmentItem = (index) => {
+    if (readOnly) return;
     const newEquipment = [...(sheet.equipment || [])];
     newEquipment.splice(index, 1);
     updateSheet({ equipment: newEquipment });
@@ -239,6 +248,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                 value={sheet.class || ""}
                 onChange={(e) => updateSheet({ class: e.target.value })}
                 sx={{ minWidth: 200 }}
+                disabled={readOnly}
               >
                 {CLASSES.map((cls) => (
                   <MenuItem key={cls} value={cls}>{cls}</MenuItem>
@@ -253,6 +263,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                 value={sheet.level || 1}
                 onChange={(e) => updateSheet({ level: parseInt(e.target.value) || 1 })}
                 inputProps={{ min: 1, max: 20 }}
+                disabled={readOnly}
               />
             </Grid>
             <Grid item xs={12} sm={3}>
@@ -263,6 +274,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                 value={sheet.race || ""}
                 onChange={(e) => updateSheet({ race: e.target.value })}
                 sx={{ minWidth: 180 }}
+                disabled={readOnly}
               >
                 {RACES.map((race) => (
                   <MenuItem key={race} value={race}>{race}</MenuItem>
@@ -275,6 +287,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                 label="Background/Origin"
                 value={sheet.background || ""}
                 onChange={(e) => updateSheet({ background: e.target.value })}
+                disabled={readOnly}
               />
             </Grid>
           </Grid>
@@ -304,6 +317,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                       onChange={(e) => updateStat(ability.id, e.target.value)}
                       inputProps={{ min: 1, max: 30 }}
                       sx={{ my: 1 }}
+                      disabled={readOnly}
                     />
                     <Typography variant="h6" color={modifier >= 0 ? "success.main" : "error.main"}>
                       {modifier >= 0 ? "+" : ""}{modifier}
@@ -343,6 +357,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                         e.target.select();
                       }
                     }}
+                    disabled={readOnly}
                   />
                 </Grid>
                 <Grid item xs={4}>
@@ -362,6 +377,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                         e.target.select();
                       }
                     }}
+                    disabled={readOnly}
                   />
                 </Grid>
                 <Grid item xs={4}>
@@ -381,6 +397,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                         e.target.select();
                       }
                     }}
+                    disabled={readOnly}
                   />
                 </Grid>
               </Grid>
@@ -393,6 +410,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                 label="Armor Class (AC)"
                 value={sheet.ac || 10}
                 onChange={(e) => updateSheet({ ac: parseInt(e.target.value) || 10 })}
+                disabled={readOnly}
               />
             </Grid>
             <Grid item xs={12} sm={2}>
@@ -403,6 +421,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                 label="Initiative"
                 value={sheet.initiative || 0}
                 onChange={(e) => updateSheet({ initiative: parseInt(e.target.value) || 0 })}
+                disabled={readOnly}
               />
             </Grid>
             <Grid item xs={12} sm={2}>
@@ -413,6 +432,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                 label="Speed (ft)"
                 value={sheet.speed || 30}
                 onChange={(e) => updateSheet({ speed: parseInt(e.target.value) || 30 })}
+                disabled={readOnly}
               />
             </Grid>
           </Grid>
@@ -439,7 +459,8 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                           label={`${skill.name} (${skill.ability.substring(0, 3).toUpperCase()})`}
                           color={isProficient ? "primary" : "default"}
                           onClick={() => toggleSkillProficiency(skill.id)}
-                          sx={{ cursor: "pointer" }}
+                          sx={{ cursor: readOnly ? "default" : "pointer" }}
+                          disabled={readOnly}
                         />
                         <Typography variant="body2" color="text.secondary">
                           {modifier >= 0 ? "+" : ""}{modifier}
@@ -468,7 +489,8 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                         label={`${ability.abbr}: ${modifier >= 0 ? "+" : ""}${modifier}`}
                         color={isProficient ? "primary" : "default"}
                         onClick={() => toggleSavingThrowProficiency(ability.id)}
-                        sx={{ cursor: "pointer", width: "100%" }}
+                        sx={{ cursor: readOnly ? "default" : "pointer", width: "100%" }}
+                        disabled={readOnly}
                       />
                     </Grid>
                   );
@@ -498,17 +520,20 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                   item={equipmentItem}
                   onChange={(updatedItem) => updateEquipmentItem(index, updatedItem)}
                   onDelete={() => removeEquipmentItem(index)}
+                  readOnly={readOnly}
                 />
               );
             })}
-            <Button
-              startIcon={<AddIcon />}
-              onClick={addEquipmentItem}
-              variant="outlined"
-              size="small"
-            >
-              Add Item
-            </Button>
+            {!readOnly && (
+              <Button
+                startIcon={<AddIcon />}
+                onClick={addEquipmentItem}
+                variant="outlined"
+                size="small"
+              >
+                Add Item
+              </Button>
+            )}
           </Box>
         </AccordionDetails>
       </Accordion>
@@ -530,21 +555,26 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                     value={feature}
                     onChange={(e) => updateListItem("features", index, e.target.value)}
                     placeholder="Feature description..."
+                    disabled={readOnly}
                   />
-                  <IconButton color="error" onClick={() => removeListItem("features", index)}>
-                    <DeleteIcon />
-                  </IconButton>
+                  {!readOnly && (
+                    <IconButton color="error" onClick={() => removeListItem("features", index)}>
+                      <DeleteIcon />
+                    </IconButton>
+                  )}
                 </Box>
               ))}
-              <Button
-                startIcon={<AddIcon />}
-                onClick={() => addListItem("features")}
-                variant="outlined"
-                size="small"
-                sx={{ mt: 1 }}
-              >
-                Add Feature
-              </Button>
+              {!readOnly && (
+                <Button
+                  startIcon={<AddIcon />}
+                  onClick={() => addListItem("features")}
+                  variant="outlined"
+                  size="small"
+                  sx={{ mt: 1 }}
+                >
+                  Add Feature
+                </Button>
+              )}
             </Box>
           </Box>
         </AccordionDetails>
@@ -568,6 +598,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                   onChange={(e) => updateSheet({
                     personality: { ...sheet.personality, traits: e.target.value }
                   })}
+                  disabled={readOnly}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -580,6 +611,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                   onChange={(e) => updateSheet({
                     personality: { ...sheet.personality, ideals: e.target.value }
                   })}
+                  disabled={readOnly}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -592,6 +624,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                   onChange={(e) => updateSheet({
                     personality: { ...sheet.personality, bonds: e.target.value }
                   })}
+                  disabled={readOnly}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -604,6 +637,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
                   onChange={(e) => updateSheet({
                     personality: { ...sheet.personality, flaws: e.target.value }
                   })}
+                  disabled={readOnly}
                 />
               </Grid>
             </Grid>
@@ -624,6 +658,7 @@ export default function CharacterSheetEditor({ value, onChange, type = "player" 
             value={sheet.backstory || ""}
             onChange={(e) => updateSheet({ backstory: e.target.value })}
             placeholder="Character backstory and history..."
+            disabled={readOnly}
           />
         </AccordionDetails>
       </Accordion>

@@ -2,7 +2,7 @@
 import express from "express";
 import db from "../db.js";
 import { authenticateToken } from "../middleware/auth.js";
-import { requireCampaignOwnership } from "../utils/campaignOwnership.js";
+import { requireCampaignAccess, requireCampaignDM } from "../middleware/participantAccess.js";
 
 const router = express.Router({ mergeParams: true });
 
@@ -10,17 +10,35 @@ const router = express.Router({ mergeParams: true });
 router.use(authenticateToken);
 
 // Helper function to get full quest with all relationships
-function getQuestWithRelations(questId, campaignId) {
+function getQuestWithRelations(questId, campaignId, userRole = null) {
   const quest = db
-    .prepare("SELECT * FROM quests WHERE id = ? AND campaign_id = ?")
+    .prepare(`
+      SELECT q.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM quests q
+      LEFT JOIN users creator ON q.created_by_user_id = creator.id
+      LEFT JOIN users updater ON q.last_updated_by_user_id = updater.id
+      WHERE q.id = ? AND q.campaign_id = ?
+    `)
     .get(questId, campaignId);
 
   if (!quest) return null;
 
-  // Get quest links
-  const links = db
-    .prepare("SELECT * FROM quest_links WHERE quest_id = ?")
-    .all(questId);
+  // Get quest links - filter by visibility based on user role
+  let linksQuery = "SELECT * FROM quest_links WHERE quest_id = ?";
+  const linksParams = [questId];
+  
+  if (userRole === "player") {
+    // Players only see player-visible links
+    linksQuery += " AND visibility = 'player-visible'";
+  } else if (userRole === "dm") {
+    // DMs see all links except hidden
+    linksQuery += " AND visibility != 'hidden'";
+  }
+  // If no role, return empty links array (shouldn't happen, but safe fallback)
+  
+  const links = db.prepare(linksQuery).all(...linksParams);
 
   // Get quest objectives
   const objectives = db
@@ -53,40 +71,66 @@ function getQuestWithRelations(questId, campaignId) {
 }
 
 // GET /api/campaigns/:campaignId/quests
-router.get("/:campaignId/quests", requireCampaignOwnership, (req, res) => {
+router.get("/:campaignId/quests", requireCampaignAccess, (req, res) => {
   try {
     const { campaignId } = req.params;
     const { search, status, quest_type, urgency } = req.query;
+    const userRole = req.userCampaignRole;
+
+    console.log(`[Quests GET] Campaign: ${campaignId}, UserRole: ${userRole}, UserId: ${req.user?.id}`);
 
     if (!campaignId) {
       return res.status(400).json({ error: "Campaign ID is required" });
     }
 
-    let query = "SELECT * FROM quests WHERE campaign_id = ?";
+    if (!userRole) {
+      console.error(`[Quests GET] userRole is undefined for user ${req.user?.id} in campaign ${campaignId}`);
+      return res.status(403).json({ error: "Access denied - no role assigned" });
+    }
+
+    let query = `
+      SELECT q.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM quests q
+      LEFT JOIN users creator ON q.created_by_user_id = creator.id
+      LEFT JOIN users updater ON q.last_updated_by_user_id = updater.id
+      WHERE q.campaign_id = ?
+    `;
     const params = [campaignId];
 
+    // Filter by visibility: players only see player-visible, DMs see all except hidden
+    if (userRole === "player") {
+      query += " AND q.visibility = 'player-visible'";
+    } else if (userRole === "dm") {
+      query += " AND q.visibility != 'hidden'";
+    } else {
+      console.error(`[Quests GET] Invalid userRole: ${userRole}`);
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     if (status) {
-      query += " AND status = ?";
+      query += " AND q.status = ?";
       params.push(status);
     }
 
     if (quest_type) {
-      query += " AND quest_type = ?";
+      query += " AND q.quest_type = ?";
       params.push(quest_type);
     }
 
     if (urgency) {
-      query += " AND urgency_level = ?";
+      query += " AND q.urgency_level = ?";
       params.push(urgency);
     }
 
     if (search) {
-      query += " AND (title LIKE ? OR short_summary LIKE ? OR description LIKE ?)";
+      query += " AND (q.title LIKE ? OR q.short_summary LIKE ? OR q.description LIKE ?)";
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm, searchTerm);
     }
 
-    query += " ORDER BY created_at DESC";
+    query += " ORDER BY q.created_at DESC";
 
     const quests = db.prepare(query).all(...params);
 
@@ -99,14 +143,24 @@ router.get("/:campaignId/quests", requireCampaignOwnership, (req, res) => {
 });
 
 // GET /api/campaigns/:campaignId/quests/:id
-router.get("/:campaignId/quests/:id", requireCampaignOwnership, (req, res) => {
+router.get("/:campaignId/quests/:id", requireCampaignAccess, (req, res) => {
   try {
     const { campaignId, id } = req.params;
+    const userRole = req.userCampaignRole;
 
-    const quest = getQuestWithRelations(id, campaignId);
+    const quest = getQuestWithRelations(id, campaignId, userRole);
 
     if (!quest) {
       return res.status(404).json({ error: "Quest not found" });
+    }
+
+    // Filter by visibility
+    if (userRole === "player" && quest.visibility !== "player-visible") {
+      return res.status(403).json({ error: "Access denied" });
+    } else if (userRole === "dm" && quest.visibility === "hidden") {
+      return res.status(403).json({ error: "Access denied" });
+    } else if (!userRole) {
+      return res.status(403).json({ error: "Access denied" });
     }
 
     res.json(quest);
@@ -117,7 +171,7 @@ router.get("/:campaignId/quests/:id", requireCampaignOwnership, (req, res) => {
 });
 
 // POST /api/campaigns/:campaignId/quests
-router.post("/:campaignId/quests", requireCampaignOwnership, (req, res) => {
+router.post("/:campaignId/quests", requireCampaignDM, (req, res) => {
   try {
     const { campaignId } = req.params;
     const {
@@ -144,14 +198,17 @@ router.post("/:campaignId/quests", requireCampaignOwnership, (req, res) => {
       return res.status(400).json({ error: "Quest title is required" });
     }
 
+    const userId = req.user.id;
+
     const result = db
       .prepare(
         `INSERT INTO quests (
           campaign_id, title, quest_type, status, short_summary, description,
           quest_giver, initial_hook, rewards, consequences, urgency_level,
-          estimated_sessions, difficulty, visibility_controls, introduced_in_session
+          estimated_sessions, difficulty, visibility_controls, visibility, introduced_in_session,
+          created_by_user_id, last_updated_by_user_id
         )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         campaignId,
@@ -168,7 +225,10 @@ router.post("/:campaignId/quests", requireCampaignOwnership, (req, res) => {
         estimated_sessions || null,
         difficulty || null,
         visibility_controls || null,
-        introduced_in_session || null
+        visibility || "dm-only",
+        introduced_in_session || null,
+        userId, // created_by_user_id
+        userId  // last_updated_by_user_id
       );
 
     const questId = result.lastInsertRowid;
@@ -232,7 +292,8 @@ router.post("/:campaignId/quests", requireCampaignOwnership, (req, res) => {
       }
     }
 
-    const newQuest = getQuestWithRelations(questId, campaignId);
+    // After creating, fetch with DM role (since only DMs can create)
+    const newQuest = getQuestWithRelations(questId, campaignId, "dm");
     res.status(201).json(newQuest);
   } catch (error) {
     console.error("Error creating quest:", error);
@@ -241,9 +302,10 @@ router.post("/:campaignId/quests", requireCampaignOwnership, (req, res) => {
 });
 
 // PUT /api/campaigns/:campaignId/quests/:id
-router.put("/:campaignId/quests/:id", requireCampaignOwnership, (req, res) => {
+router.put("/:campaignId/quests/:id", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id } = req.params;
+    const userRole = req.userCampaignRole; // Will be "dm" from requireCampaignDM
     const {
       title,
       quest_type,
@@ -258,6 +320,7 @@ router.put("/:campaignId/quests/:id", requireCampaignOwnership, (req, res) => {
       estimated_sessions,
       difficulty,
       visibility_controls,
+      visibility,
       introduced_in_session,
       completed_in_session,
       links,
@@ -278,13 +341,15 @@ router.put("/:campaignId/quests/:id", requireCampaignOwnership, (req, res) => {
       return res.status(404).json({ error: "Quest not found" });
     }
 
+    const userId = req.user.id;
+
     db.prepare(
       `UPDATE quests 
        SET title = ?, quest_type = ?, status = ?, short_summary = ?, description = ?,
            quest_giver = ?, initial_hook = ?, rewards = ?, consequences = ?,
            urgency_level = ?, estimated_sessions = ?, difficulty = ?,
-           visibility_controls = ?, introduced_in_session = ?, completed_in_session = ?,
-           updated_at = CURRENT_TIMESTAMP
+           visibility_controls = ?, visibility = ?, introduced_in_session = ?, completed_in_session = ?,
+           updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = ?
        WHERE id = ? AND campaign_id = ?`
     ).run(
       title.trim(),
@@ -300,8 +365,10 @@ router.put("/:campaignId/quests/:id", requireCampaignOwnership, (req, res) => {
       estimated_sessions || null,
       difficulty || null,
       visibility_controls || null,
+      visibility || "dm-only",
       introduced_in_session || null,
       completed_in_session || null,
+      userId, // last_updated_by_user_id
       id,
       campaignId
     );
@@ -370,7 +437,8 @@ router.put("/:campaignId/quests/:id", requireCampaignOwnership, (req, res) => {
       }
     }
 
-    const updatedQuest = getQuestWithRelations(id, campaignId);
+    // After updating, fetch with DM role (since only DMs can update)
+    const updatedQuest = getQuestWithRelations(id, campaignId, "dm");
     res.json(updatedQuest);
   } catch (error) {
     console.error("Error updating quest:", error);
@@ -379,7 +447,7 @@ router.put("/:campaignId/quests/:id", requireCampaignOwnership, (req, res) => {
 });
 
 // DELETE /api/campaigns/:campaignId/quests/:id
-router.delete("/:campaignId/quests/:id", requireCampaignOwnership, (req, res) => {
+router.delete("/:campaignId/quests/:id", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id } = req.params;
 
@@ -407,7 +475,7 @@ router.delete("/:campaignId/quests/:id", requireCampaignOwnership, (req, res) =>
 });
 
 // POST /api/campaigns/:campaignId/quests/:id/links
-router.post("/:campaignId/quests/:id/links", requireCampaignOwnership, (req, res) => {
+router.post("/:campaignId/quests/:id/links", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id: questId } = req.params;
     const { entity_type, entity_id, role, visibility } = req.body;
@@ -446,7 +514,7 @@ router.post("/:campaignId/quests/:id/links", requireCampaignOwnership, (req, res
 });
 
 // DELETE /api/campaigns/:campaignId/quests/:id/links/:linkId
-router.delete("/:campaignId/quests/:id/links/:linkId", requireCampaignOwnership, (req, res) => {
+router.delete("/:campaignId/quests/:id/links/:linkId", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id: questId, linkId } = req.params;
 
@@ -469,7 +537,7 @@ router.delete("/:campaignId/quests/:id/links/:linkId", requireCampaignOwnership,
 });
 
 // POST /api/campaigns/:campaignId/quests/:id/objectives
-router.post("/:campaignId/quests/:id/objectives", requireCampaignOwnership, (req, res) => {
+router.post("/:campaignId/quests/:id/objectives", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id: questId } = req.params;
     const { objective_type, title, description, status, linked_entity_type, linked_entity_id, notes, order_index } = req.body;
@@ -519,7 +587,7 @@ router.post("/:campaignId/quests/:id/objectives", requireCampaignOwnership, (req
 });
 
 // PUT /api/campaigns/:campaignId/quests/:id/objectives/:objectiveId
-router.put("/:campaignId/quests/:id/objectives/:objectiveId", requireCampaignOwnership, (req, res) => {
+router.put("/:campaignId/quests/:id/objectives/:objectiveId", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id: questId, objectiveId } = req.params;
     const { objective_type, title, description, status, linked_entity_type, linked_entity_id, notes, order_index } = req.body;
@@ -568,7 +636,7 @@ router.put("/:campaignId/quests/:id/objectives/:objectiveId", requireCampaignOwn
 });
 
 // DELETE /api/campaigns/:campaignId/quests/:id/objectives/:objectiveId
-router.delete("/:campaignId/quests/:id/objectives/:objectiveId", requireCampaignOwnership, (req, res) => {
+router.delete("/:campaignId/quests/:id/objectives/:objectiveId", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id: questId, objectiveId } = req.params;
 
@@ -591,7 +659,7 @@ router.delete("/:campaignId/quests/:id/objectives/:objectiveId", requireCampaign
 });
 
 // POST /api/campaigns/:campaignId/quests/:id/milestones
-router.post("/:campaignId/quests/:id/milestones", requireCampaignOwnership, (req, res) => {
+router.post("/:campaignId/quests/:id/milestones", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id: questId } = req.params;
     const { title, description, session_number } = req.body;
@@ -633,7 +701,7 @@ router.post("/:campaignId/quests/:id/milestones", requireCampaignOwnership, (req
 });
 
 // POST /api/campaigns/:campaignId/quests/:id/sessions
-router.post("/:campaignId/quests/:id/sessions", requireCampaignOwnership, (req, res) => {
+router.post("/:campaignId/quests/:id/sessions", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id: questId } = req.params;
     const { session_id, notes } = req.body;

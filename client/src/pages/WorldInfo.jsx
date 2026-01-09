@@ -1,6 +1,6 @@
 // client/src/pages/WorldInfo.jsx - World Info management page
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -26,6 +26,11 @@ import {
   AccordionSummary,
   AccordionDetails,
   MenuItem,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -54,6 +59,7 @@ const CATEGORIES = [
 
 export default function WorldInfo() {
   const { id: campaignId } = useParams();
+  const location = useLocation();
   const [worldInfo, setWorldInfo] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
@@ -61,7 +67,8 @@ export default function WorldInfo() {
   const [formData, setFormData] = useState({ 
     title: "", 
     content: "", 
-    category: ""
+    category: "",
+    visibility: "dm-only"
   });
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
 
@@ -93,6 +100,28 @@ export default function WorldInfo() {
     fetchWorldInfo();
   }, [campaignId]);
 
+  // Check for navigation state to auto-open entity dialog
+  useEffect(() => {
+    if (location.state?.openEntityId && worldInfo.length > 0) {
+      const entityId = location.state.openEntityId;
+      const entityType = location.state.entityType;
+      
+      if (entityType === "world_info") {
+        // Normalize IDs to numbers for comparison (handle both string and number IDs)
+        const entityIdNum = typeof entityId === 'string' ? parseInt(entityId, 10) : entityId;
+        const info = worldInfo.find(w => {
+          const infoIdNum = typeof w.id === 'string' ? parseInt(w.id, 10) : w.id;
+          return infoIdNum === entityIdNum;
+        });
+        if (info) {
+          handleOpenDialog(info);
+          // Clear the state to prevent re-opening on re-render
+          window.history.replaceState({}, document.title);
+        }
+      }
+    }
+  }, [location.state, worldInfo]);
+
   const handleOpenDialog = (info = null) => {
     if (info) {
       setEditingWorldInfo(info);
@@ -106,7 +135,8 @@ export default function WorldInfo() {
       setFormData({
         title: "",
         content: "",
-        category: ""
+        category: "",
+        visibility: "dm-only"
       });
     }
     setOpenDialog(true);
@@ -115,7 +145,7 @@ export default function WorldInfo() {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingWorldInfo(null);
-    setFormData({ title: "", content: "", category: "" });
+    setFormData({ title: "", content: "", category: "", visibility: "dm-only" });
   };
 
   const handleSubmit = async () => {
@@ -192,7 +222,18 @@ export default function WorldInfo() {
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString();
+    try {
+      // If it's a date-only string (YYYY-MM-DD), parse it as local date to avoid timezone issues
+      if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [year, month, day] = dateString.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // month is 0-indexed in Date constructor
+        return date.toLocaleDateString();
+      }
+      // For datetime strings, parse normally but use local timezone
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return dateString;
+    }
   };
 
   return (
@@ -324,9 +365,16 @@ export default function WorldInfo() {
                     />
                   </TableCell>
                   <TableCell>
-                    <Typography color="text.secondary">
-                      {formatDate(info.created_at)}
-                    </Typography>
+                    <Box>
+                      <Typography color="text.secondary" variant="body2">
+                        {formatDate(info.created_at)}
+                      </Typography>
+                      {info.created_by_username && (
+                        <Typography color="text.secondary" variant="caption" display="block">
+                          by {info.created_by_username}
+                        </Typography>
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                     <IconButton
@@ -370,6 +418,14 @@ export default function WorldInfo() {
           {editingWorldInfo ? "Edit World Information" : "New World Information"}
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
             {editingWorldInfo ? "Update" : "Create"} a world information entry for this campaign
+            {editingWorldInfo && editingWorldInfo.created_by_username && (
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                Created by {editingWorldInfo.created_by_username} on {formatDate(editingWorldInfo.created_at)}
+                {editingWorldInfo.last_updated_by_username && editingWorldInfo.last_updated_by_username !== editingWorldInfo.created_by_username && (
+                  <> • Last updated by {editingWorldInfo.last_updated_by_username} on {formatDate(editingWorldInfo.updated_at)}</>
+                )}
+              </Typography>
+            )}
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
@@ -408,7 +464,40 @@ export default function WorldInfo() {
                 value={formData.content}
                 onChange={(html) => setFormData({ ...formData, content: html })}
                 placeholder="Enter world information content..."
+                campaignId={campaignId}
               />
+            </Box>
+
+            <Box>
+              <FormControl component="fieldset">
+                <FormLabel component="legend">Visibility</FormLabel>
+                <RadioGroup
+                  row
+                  value={formData.visibility}
+                  onChange={(e) => setFormData({ ...formData, visibility: e.target.value })}
+                >
+                  <FormControlLabel 
+                    value="dm-only" 
+                    control={<Radio />} 
+                    label="DM Only" 
+                  />
+                  <FormControlLabel 
+                    value="player-visible" 
+                    control={<Radio />} 
+                    label="DM & Players" 
+                  />
+                  <FormControlLabel 
+                    value="hidden" 
+                    control={<Radio />} 
+                    label="Hidden" 
+                  />
+                </RadioGroup>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                  {formData.visibility === "dm-only" && "Only DMs can see this world info"}
+                  {formData.visibility === "player-visible" && "Both DMs and players can see this world info"}
+                  {formData.visibility === "hidden" && "Hidden from all participants"}
+                </Typography>
+              </FormControl>
             </Box>
           </Box>
         </DialogContent>

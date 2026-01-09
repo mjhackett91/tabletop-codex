@@ -31,10 +31,11 @@ const ARMOR_TYPES = [
   "Light Armor", "Medium Armor", "Heavy Armor", "Shield"
 ];
 
-export default function EquipmentItemEditor({ item, onChange, onDelete }) {
+export default function EquipmentItemEditor({ item, onChange, onDelete, readOnly = false }) {
   const [expanded, setExpanded] = useState(false);
 
   const updateItem = (field, value) => {
+    if (readOnly) return;
     onChange({ ...item, [field]: value });
   };
 
@@ -55,16 +56,46 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
               <Chip label="Requires Attunement" size="small" color="warning" />
             )}
           </Box>
-          <IconButton
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            color="error"
-            size="small"
-          >
-            <DeleteIcon />
-          </IconButton>
+          {!readOnly && (
+            <Box
+              component="div"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                position: "relative",
+                boxSizing: "border-box",
+                WebkitTapHighlightColor: "transparent",
+                backgroundColor: "transparent",
+                outline: 0,
+                border: 0,
+                margin: 0,
+                borderRadius: "50%",
+                cursor: "pointer",
+                userSelect: "none",
+                verticalAlign: "middle",
+                appearance: "none",
+                textDecoration: "none",
+                color: "inherit",
+                padding: "8px",
+                fontSize: "1.5rem",
+                width: "40px",
+                height: "40px",
+                "&:hover": {
+                  backgroundColor: "rgba(211, 47, 47, 0.08)",
+                },
+                "&:active": {
+                  backgroundColor: "rgba(211, 47, 47, 0.12)",
+                },
+              }}
+            >
+              <DeleteIcon sx={{ color: "error.main", fontSize: "1.25rem" }} />
+            </Box>
+          )}
         </Box>
       </AccordionSummary>
       <AccordionDetails>
@@ -78,6 +109,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
               onChange={(e) => updateItem("name", e.target.value)}
               required
               sx={{ minWidth: 200 }}
+              disabled={readOnly}
             />
           </Grid>
           <Grid item xs={12} sm={6}>
@@ -88,6 +120,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
               value={item.type || ""}
               onChange={(e) => updateItem("type", e.target.value)}
               sx={{ minWidth: 200 }}
+              disabled={readOnly}
             >
               {ITEM_TYPES.map((type) => (
                 <MenuItem key={type} value={type}>{type}</MenuItem>
@@ -104,6 +137,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
               onChange={(e) => updateItem("description", e.target.value)}
               placeholder="Item description and properties..."
               sx={{ minWidth: 300 }}
+              disabled={readOnly}
             />
           </Grid>
 
@@ -125,6 +159,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
                       value={item.weaponType || ""}
                       onChange={(e) => updateItem("weaponType", e.target.value)}
                       sx={{ minWidth: 180 }}
+                      disabled={readOnly}
                     >
                       {WEAPON_TYPES.map((type) => (
                         <MenuItem key={type} value={type}>{type}</MenuItem>
@@ -139,6 +174,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
                       onChange={(e) => updateItem("damage", e.target.value)}
                       placeholder="1d8 + 2"
                       sx={{ minWidth: 150 }}
+                      disabled={readOnly}
                     />
                   </Grid>
                   <Grid item xs={12} sm={4}>
@@ -149,6 +185,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
                       onChange={(e) => updateItem("damageType", e.target.value)}
                       placeholder="Slashing, Piercing, Bludgeoning"
                       sx={{ minWidth: 200 }}
+                      disabled={readOnly}
                     />
                   </Grid>
                   <Grid item xs={12} sm={4}>
@@ -159,6 +196,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
                       onChange={(e) => updateItem("properties", e.target.value)}
                       placeholder="Versatile, Finesse, etc."
                       sx={{ minWidth: 180 }}
+                      disabled={readOnly}
                     />
                   </Grid>
                   <Grid item xs={12} sm={4}>
@@ -169,6 +207,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
                       value={item.range || ""}
                       onChange={(e) => updateItem("range", e.target.value)}
                       sx={{ minWidth: 120 }}
+                      disabled={readOnly}
                     />
                   </Grid>
                 </>
@@ -184,6 +223,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
                       value={item.armorType || ""}
                       onChange={(e) => updateItem("armorType", e.target.value)}
                       sx={{ minWidth: 180 }}
+                      disabled={readOnly}
                     >
                       {ARMOR_TYPES.map((type) => (
                         <MenuItem key={type} value={type}>{type}</MenuItem>
@@ -198,6 +238,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
                       value={item.ac || ""}
                       onChange={(e) => updateItem("ac", e.target.value)}
                       sx={{ minWidth: 120 }}
+                      disabled={readOnly}
                     />
                   </Grid>
                   <Grid item xs={12} sm={4}>
@@ -209,6 +250,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
                       onChange={(e) => updateItem("dexModMax", e.target.value)}
                       placeholder="e.g., 2 for medium armor"
                       sx={{ minWidth: 200 }}
+                      disabled={readOnly}
                     />
                   </Grid>
                 </>
@@ -223,6 +265,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
                     value={item.acBonus || ""}
                     onChange={(e) => updateItem("acBonus", e.target.value)}
                     sx={{ minWidth: 120 }}
+                    disabled={readOnly}
                   />
                 </Grid>
               )}
@@ -242,6 +285,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
               value={item.weight || ""}
               onChange={(e) => updateItem("weight", e.target.value)}
               sx={{ minWidth: 150 }}
+              disabled={readOnly}
             />
           </Grid>
           <Grid item xs={12} sm={4}>
@@ -252,6 +296,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
               onChange={(e) => updateItem("value", e.target.value)}
               placeholder="e.g., 50 gp"
               sx={{ minWidth: 150 }}
+              disabled={readOnly}
             />
           </Grid>
           <Grid item xs={12} sm={4}>
@@ -262,6 +307,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
               value={item.rarity || ""}
               onChange={(e) => updateItem("rarity", e.target.value)}
               sx={{ minWidth: 150 }}
+              disabled={readOnly}
             >
               <MenuItem value="">None</MenuItem>
               <MenuItem value="Common">Common</MenuItem>
@@ -278,6 +324,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
                 <Checkbox
                   checked={item.attunement || false}
                   onChange={(e) => updateItem("attunement", e.target.checked)}
+                  disabled={readOnly}
                 />
               }
               label="Requires Attunement"
@@ -293,6 +340,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete }) {
               onChange={(e) => updateItem("specialProperties", e.target.value)}
               placeholder="Additional magical properties, curses, or special abilities..."
               sx={{ minWidth: 400 }}
+              disabled={readOnly}
             />
           </Grid>
         </Grid>

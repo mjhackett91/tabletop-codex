@@ -9,14 +9,38 @@ const router = express.Router();
 // All campaign routes require authentication
 router.use(authenticateToken);
 
-/** GET /api/campaigns - List user's campaigns */
+/** GET /api/campaigns - List user's campaigns (owned and participated) */
 router.get("/", (req, res) => {
   try {
     const userId = req.user.id;
+    
+    // Get campaigns where user is owner OR participant
     const campaigns = db
-      .prepare("SELECT * FROM campaigns WHERE user_id = ? ORDER BY created_at DESC")
-      .all(userId);
-    res.json(campaigns);
+      .prepare(`
+        SELECT DISTINCT
+          c.*,
+          CASE 
+            WHEN c.user_id = ? THEN 'dm'
+            ELSE cp.role
+          END as user_role,
+          CASE 
+            WHEN c.user_id = ? THEN 1
+            ELSE 0
+          END as is_owner
+        FROM campaigns c
+        LEFT JOIN campaign_participants cp ON c.id = cp.campaign_id AND cp.user_id = ?
+        WHERE c.user_id = ? OR cp.user_id = ?
+        ORDER BY is_owner DESC, c.created_at DESC
+      `)
+      .all(userId, userId, userId, userId, userId);
+    
+    // Convert SQLite boolean (0/1) to actual boolean
+    const campaignsWithBooleans = campaigns.map(c => ({
+      ...c,
+      is_owner: c.is_owner === 1 || c.is_owner === true
+    }));
+    
+    res.json(campaignsWithBooleans);
   } catch (error) {
     console.error("Error fetching campaigns:", error);
     res.status(500).json({ error: "Failed to fetch campaigns" });

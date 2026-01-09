@@ -11,6 +11,7 @@ import factionsRouter from "./routes/factions.js";
 import worldInfoRouter from "./routes/worldInfo.js";
 import sessionsRouter from "./routes/sessions.js";
 import questsRouter from "./routes/quests.js";
+import participantsRouter from "./routes/participants.js";
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ app.use("/api/campaigns", factionsRouter);
 app.use("/api/campaigns", worldInfoRouter);
 app.use("/api/campaigns", sessionsRouter);
 app.use("/api/campaigns", questsRouter);
+app.use("/api/campaigns", participantsRouter);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

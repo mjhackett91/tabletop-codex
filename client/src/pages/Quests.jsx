@@ -1,6 +1,6 @@
 // client/src/pages/Quests.jsx - Enhanced Quests management page
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -36,6 +36,9 @@ import {
   InputLabel,
   FormControl,
   CircularProgress,
+  FormLabel,
+  RadioGroup,
+  Radio,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -86,6 +89,7 @@ const OBJECTIVE_STATUSES = [
 
 export default function Quests() {
   const { id: campaignId } = useParams();
+  const location = useLocation();
   const [quests, setQuests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
@@ -106,6 +110,7 @@ export default function Quests() {
     difficulty: "",
     introduced_in_session: "",
     completed_in_session: "",
+    visibility: "dm-only",
   });
   const [objectives, setObjectives] = useState([]);
   const [links, setLinks] = useState([]);
@@ -148,6 +153,28 @@ export default function Quests() {
     fetchQuests();
   }, [campaignId]);
 
+  // Check for navigation state to auto-open entity dialog
+  useEffect(() => {
+    if (location.state?.openEntityId && quests.length > 0) {
+      const entityId = location.state.openEntityId;
+      const entityType = location.state.entityType;
+      
+      if (entityType === "quest") {
+        // Normalize IDs to numbers for comparison (handle both string and number IDs)
+        const entityIdNum = typeof entityId === 'string' ? parseInt(entityId, 10) : entityId;
+        const quest = quests.find(q => {
+          const questIdNum = typeof q.id === 'string' ? parseInt(q.id, 10) : q.id;
+          return questIdNum === entityIdNum;
+        });
+        if (quest) {
+          handleOpenDialog(quest);
+          // Clear the state to prevent re-opening on re-render
+          window.history.replaceState({}, document.title);
+        }
+      }
+    }
+  }, [location.state, quests]);
+
   const handleOpenDialog = async (quest = null) => {
     if (quest) {
       // Fetch full quest with relationships
@@ -169,6 +196,7 @@ export default function Quests() {
           difficulty: fullQuest.difficulty || "",
           introduced_in_session: fullQuest.introduced_in_session?.toString() || "",
           completed_in_session: fullQuest.completed_in_session?.toString() || "",
+          visibility: fullQuest.visibility || "dm-only",
         });
         setObjectives(fullQuest.objectives || []);
         setLinks(fullQuest.links || []);
@@ -199,6 +227,7 @@ export default function Quests() {
         difficulty: "",
         introduced_in_session: "",
         completed_in_session: "",
+        visibility: "dm-only",
       });
       setObjectives([]);
       setLinks([]);
@@ -292,7 +321,18 @@ export default function Quests() {
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString();
+    try {
+      // If it's a date-only string (YYYY-MM-DD), parse it as local date to avoid timezone issues
+      if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [year, month, day] = dateString.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // month is 0-indexed in Date constructor
+        return date.toLocaleDateString();
+      }
+      // For datetime strings, parse normally but use local timezone
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return dateString;
+    }
   };
 
   const getStatusColor = (status) => {
@@ -665,6 +705,14 @@ export default function Quests() {
       >
         <DialogTitle>
           {editingQuest ? "Edit Quest" : "New Quest"}
+          {editingQuest && editingQuest.created_by_username && (
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+              Created by {editingQuest.created_by_username} on {formatDate(editingQuest.created_at)}
+              {editingQuest.last_updated_by_username && editingQuest.last_updated_by_username !== editingQuest.created_by_username && (
+                <> • Last updated by {editingQuest.last_updated_by_username} on {formatDate(editingQuest.updated_at)}</>
+              )}
+            </Typography>
+          )}
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, display: "flex", flexDirection: "column", height: "100%" }}>
           <Tabs value={dialogTab} onChange={(e, v) => setDialogTab(v)} sx={{ borderBottom: 1, borderColor: "divider" }}>
@@ -732,6 +780,7 @@ export default function Quests() {
                     value={formData.description}
                     onChange={(html) => setFormData({ ...formData, description: html })}
                     placeholder="Full narrative context (DM-facing)..."
+                    campaignId={campaignId}
                   />
                 </Box>
 
@@ -797,6 +846,38 @@ export default function Quests() {
                     value={formData.completed_in_session}
                     onChange={(e) => setFormData({ ...formData, completed_in_session: e.target.value })}
                   />
+                </Box>
+
+                <Box>
+                  <FormControl component="fieldset" fullWidth>
+                    <FormLabel component="legend">Visibility</FormLabel>
+                    <RadioGroup
+                      row
+                      value={formData.visibility}
+                      onChange={(e) => setFormData({ ...formData, visibility: e.target.value })}
+                    >
+                      <FormControlLabel 
+                        value="dm-only" 
+                        control={<Radio />} 
+                        label="DM Only" 
+                      />
+                      <FormControlLabel 
+                        value="player-visible" 
+                        control={<Radio />} 
+                        label="DM & Players" 
+                      />
+                      <FormControlLabel 
+                        value="hidden" 
+                        control={<Radio />} 
+                        label="Hidden" 
+                      />
+                    </RadioGroup>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                      {formData.visibility === "dm-only" && "Only DMs can see this quest"}
+                      {formData.visibility === "player-visible" && "Both DMs and players can see this quest"}
+                      {formData.visibility === "hidden" && "Hidden from all participants"}
+                    </Typography>
+                  </FormControl>
                 </Box>
               </Box>
             )}
@@ -989,7 +1070,7 @@ export default function Quests() {
                           label="Visibility"
                         >
                           <MenuItem value="dm-only">DM Only</MenuItem>
-                          <MenuItem value="player-visible">Player Visible</MenuItem>
+                          <MenuItem value="player-visible">DM & Players</MenuItem>
                           <MenuItem value="hidden">Hidden</MenuItem>
                         </Select>
                       </FormControl>
@@ -1019,6 +1100,7 @@ export default function Quests() {
                     value={formData.rewards}
                     onChange={(html) => setFormData({ ...formData, rewards: html })}
                     placeholder="Gold, items, faction reputation, titles, land, narrative rewards..."
+                    campaignId={campaignId}
                   />
                 </Box>
                 <Divider />
@@ -1028,6 +1110,7 @@ export default function Quests() {
                     value={formData.consequences}
                     onChange={(html) => setFormData({ ...formData, consequences: html })}
                     placeholder="What happens if ignored, fails, or is delayed? World-state changes..."
+                    campaignId={campaignId}
                   />
                 </Box>
               </Box>

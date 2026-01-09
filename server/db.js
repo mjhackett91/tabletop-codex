@@ -21,6 +21,7 @@ const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("synchronous = NORMAL");
 db.pragma("busy_timeout = 5000");
+db.pragma("foreign_keys = ON"); // Enable foreign key constraints
 
 // Initialize tables
 db.exec(`
@@ -221,6 +222,21 @@ db.exec(`
     FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS player_session_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    note_content TEXT NOT NULL,
+    visibility TEXT DEFAULT 'dm-only' CHECK(visibility IN ('dm-only', 'player-visible')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_player_session_notes_session ON player_session_notes(session_id);
+  CREATE INDEX IF NOT EXISTS idx_player_session_notes_user ON player_session_notes(user_id);
+
   CREATE TABLE IF NOT EXISTS session_notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL,
@@ -247,6 +263,22 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_quest_milestones_quest ON quest_milestones(quest_id);
   CREATE INDEX IF NOT EXISTS idx_images_entity ON images(entity_type, entity_id);
   CREATE INDEX IF NOT EXISTS idx_tags_campaign ON tags(campaign_id);
+
+  CREATE TABLE IF NOT EXISTS campaign_participants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    role TEXT NOT NULL DEFAULT 'player' CHECK(role IN ('dm', 'player')),
+    invited_by INTEGER,
+    joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(campaign_id, user_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_campaign_participants_campaign ON campaign_participants(campaign_id);
+  CREATE INDEX IF NOT EXISTS idx_campaign_participants_user ON campaign_participants(user_id);
 `);
 
 // Migrate quests table to add new columns if they don't exist
@@ -313,6 +345,154 @@ try {
   }
 } catch (err) {
   console.log("Sessions migration check failed (table might not exist yet):", err.message);
+}
+
+// Migrate entity tables to add visibility fields if they don't exist
+try {
+  const tablesToMigrate = [
+    { name: "characters", hasVisibility: false },
+    { name: "locations", hasVisibility: false },
+    { name: "factions", hasVisibility: false },
+    { name: "world_info", hasVisibility: false },
+    { name: "sessions", hasVisibility: false },
+    { name: "quests", hasVisibility: true } // Already has visibility_controls, but we'll add standard visibility field
+  ];
+
+  for (const table of tablesToMigrate) {
+    try {
+      const columns = db.prepare(`PRAGMA table_info(${table.name})`).all();
+      const columnNames = columns.map(col => col.name);
+
+      // Add visibility field (standardized to match quest_links)
+      if (!columnNames.includes("visibility")) {
+        try {
+          db.exec(`ALTER TABLE ${table.name} ADD COLUMN visibility TEXT DEFAULT 'dm-only' CHECK(visibility IN ('dm-only', 'player-visible', 'hidden'))`);
+          console.log(`Added visibility column to ${table.name} table`);
+        } catch (err) {
+          console.log(`Skipping visibility column in ${table.name}: ${err.message}`);
+        }
+      }
+    } catch (err) {
+      console.log(`Migration check failed for ${table.name}: ${err.message}`);
+    }
+  }
+} catch (err) {
+  console.log("Entity visibility migration check failed:", err.message);
+}
+
+// Migrate characters table to add player_user_id if it doesn't exist
+try {
+  const charactersColumns = db.prepare("PRAGMA table_info(characters)").all();
+  const characterColumnNames = charactersColumns.map(col => col.name);
+  
+  if (!characterColumnNames.includes("player_user_id")) {
+    try {
+      // SQLite doesn't support foreign key constraints in ALTER TABLE
+      // So we add the column without the constraint, and rely on application logic
+      db.exec(`ALTER TABLE characters ADD COLUMN player_user_id INTEGER`);
+      console.log("Added player_user_id column to characters table");
+      
+      // Create index after column is added
+      try {
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_characters_player_user ON characters(player_user_id)`);
+        console.log("Created index on player_user_id");
+      } catch (idxErr) {
+        console.log(`Could not create index on player_user_id: ${idxErr.message}`);
+      }
+    } catch (err) {
+      console.log(`Skipping player_user_id column in characters: ${err.message}`);
+    }
+  } else {
+    // Column exists, but check if index exists
+    try {
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_characters_player_user ON characters(player_user_id)`);
+      console.log("Ensured index on player_user_id exists");
+    } catch (idxErr) {
+      console.log(`Could not create index on player_user_id: ${idxErr.message}`);
+    }
+  }
+} catch (err) {
+  console.log("Characters migration check failed:", err.message);
+}
+
+// Ensure campaign owner is automatically added as DM participant
+// This is done via a trigger or application logic
+try {
+  // Create trigger to auto-add campaign owner as DM participant when campaign is created
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS add_campaign_owner_as_participant
+    AFTER INSERT ON campaigns
+    BEGIN
+      INSERT OR IGNORE INTO campaign_participants (campaign_id, user_id, role)
+      VALUES (NEW.id, NEW.user_id, 'dm');
+    END;
+  `);
+  console.log("Created trigger for auto-adding campaign owner as DM participant");
+} catch (err) {
+  console.log("Could not create campaign participant trigger (might already exist):", err.message);
+}
+
+// Migrate existing campaigns to have their owners as participants
+try {
+  const existingCampaigns = db.prepare("SELECT id, user_id FROM campaigns").all();
+  for (const campaign of existingCampaigns) {
+    try {
+      db.prepare(`
+        INSERT OR IGNORE INTO campaign_participants (campaign_id, user_id, role)
+        VALUES (?, ?, 'dm')
+      `).run(campaign.id, campaign.user_id);
+    } catch (err) {
+      // Already exists or other error
+    }
+  }
+  console.log("Migrated existing campaigns to have owner participants");
+} catch (err) {
+  console.log("Could not migrate existing campaigns:", err.message);
+}
+
+// Migrate entity tables to add creator/editor tracking columns
+try {
+  const entityTables = ["characters", "locations", "factions", "world_info", "quests", "sessions"];
+  
+  for (const tableName of entityTables) {
+    try {
+      const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+      const columnNames = columns.map(col => col.name);
+      
+      // Add created_by_user_id if it doesn't exist
+      if (!columnNames.includes("created_by_user_id")) {
+        try {
+          db.exec(`ALTER TABLE ${tableName} ADD COLUMN created_by_user_id INTEGER`);
+          console.log(`Added created_by_user_id column to ${tableName} table`);
+        } catch (err) {
+          console.log(`Skipping created_by_user_id column in ${tableName}: ${err.message}`);
+        }
+      }
+      
+      // Add last_updated_by_user_id if it doesn't exist
+      if (!columnNames.includes("last_updated_by_user_id")) {
+        try {
+          db.exec(`ALTER TABLE ${tableName} ADD COLUMN last_updated_by_user_id INTEGER`);
+          console.log(`Added last_updated_by_user_id column to ${tableName} table`);
+        } catch (err) {
+          console.log(`Skipping last_updated_by_user_id column in ${tableName}: ${err.message}`);
+        }
+      }
+      
+      // Create indexes for creator/editor tracking
+      try {
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_${tableName}_created_by ON ${tableName}(created_by_user_id)`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_${tableName}_updated_by ON ${tableName}(last_updated_by_user_id)`);
+      } catch (idxErr) {
+        // Indexes might already exist
+        console.log(`Could not create indexes for ${tableName}: ${idxErr.message}`);
+      }
+    } catch (err) {
+      console.log(`Migration check failed for ${tableName}: ${err.message}`);
+    }
+  }
+} catch (err) {
+  console.log("Creator/editor tracking migration check failed:", err.message);
 }
 
 export default db;

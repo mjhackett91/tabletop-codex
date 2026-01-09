@@ -2,7 +2,7 @@
 import express from "express";
 import db from "../db.js";
 import { authenticateToken } from "../middleware/auth.js";
-import { requireCampaignOwnership } from "../utils/campaignOwnership.js";
+import { requireCampaignAccess, requireCampaignDM } from "../middleware/participantAccess.js";
 
 const router = express.Router({ mergeParams: true });
 
@@ -18,12 +18,13 @@ router.use((req, res, next) => {
 });
 
 // GET /api/campaigns/:campaignId/locations
-router.get("/:campaignId/locations", requireCampaignOwnership, (req, res) => {
+router.get("/:campaignId/locations", requireCampaignAccess, (req, res) => {
   try {
     console.log("Locations route hit - params:", req.params);
     console.log("Locations route hit - query:", req.query);
     const { campaignId } = req.params;
     const { search, parent_id } = req.query;
+    const userRole = req.userCampaignRole;
 
     if (!campaignId) {
       console.error("No campaignId in params");
@@ -32,25 +33,42 @@ router.get("/:campaignId/locations", requireCampaignOwnership, (req, res) => {
     
     console.log("Fetching locations for campaign:", campaignId);
 
-    let query = "SELECT * FROM locations WHERE campaign_id = ?";
+    let query = `
+      SELECT l.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM locations l
+      LEFT JOIN users creator ON l.created_by_user_id = creator.id
+      LEFT JOIN users updater ON l.last_updated_by_user_id = updater.id
+      WHERE l.campaign_id = ?
+    `;
     const params = [campaignId];
+
+    // Filter by visibility: players only see player-visible, DMs see all except hidden
+    if (userRole === "player") {
+      query += " AND l.visibility = 'player-visible'";
+    } else if (userRole === "dm") {
+      query += " AND l.visibility != 'hidden'";
+    } else {
+      return res.status(403).json({ error: "Access denied" });
+    }
 
     if (parent_id !== undefined) {
       if (parent_id === null || parent_id === "null") {
-        query += " AND parent_location_id IS NULL";
+        query += " AND l.parent_location_id IS NULL";
       } else {
-        query += " AND parent_location_id = ?";
+        query += " AND l.parent_location_id = ?";
         params.push(parseInt(parent_id));
       }
     }
 
     if (search) {
-      query += " AND (name LIKE ? OR description LIKE ?)";
+      query += " AND (l.name LIKE ? OR l.description LIKE ?)";
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
     }
 
-    query += " ORDER BY name";
+    query += " ORDER BY l.name";
 
     console.log("Executing query:", query);
     console.log("With params:", params);
@@ -93,13 +111,32 @@ router.get("/:campaignId/locations", requireCampaignOwnership, (req, res) => {
 });
 
 // GET /api/campaigns/:campaignId/locations/:id
-router.get("/:campaignId/locations/:id", requireCampaignOwnership, (req, res) => {
+router.get("/:campaignId/locations/:id", requireCampaignAccess, (req, res) => {
   try {
     const { campaignId, id } = req.params;
+    const userRole = req.userCampaignRole;
 
-    const location = db
-      .prepare("SELECT * FROM locations WHERE id = ? AND campaign_id = ?")
-      .get(id, campaignId);
+    let query = `
+      SELECT l.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM locations l
+      LEFT JOIN users creator ON l.created_by_user_id = creator.id
+      LEFT JOIN users updater ON l.last_updated_by_user_id = updater.id
+      WHERE l.id = ? AND l.campaign_id = ?
+    `;
+    const params = [id, campaignId];
+
+    // Filter by visibility
+    if (userRole === "player") {
+      query += " AND l.visibility = 'player-visible'";
+    } else if (userRole === "dm") {
+      query += " AND l.visibility != 'hidden'";
+    } else {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    const location = db.prepare(query).get(...params);
 
     if (!location) {
       return res.status(404).json({ error: "Location not found" });
@@ -125,10 +162,11 @@ router.get("/:campaignId/locations/:id", requireCampaignOwnership, (req, res) =>
 });
 
 // POST /api/campaigns/:campaignId/locations
-router.post("/:campaignId/locations", requireCampaignOwnership, (req, res) => {
+router.post("/:campaignId/locations", requireCampaignDM, (req, res) => {
   try {
     const { campaignId } = req.params;
-    const { name, description, location_type, parent_location_id } = req.body;
+    const { name, description, location_type, parent_location_id, visibility } = req.body;
+    const userId = req.user.id;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: "Location name is required" });
@@ -147,19 +185,30 @@ router.post("/:campaignId/locations", requireCampaignOwnership, (req, res) => {
 
     const result = db
       .prepare(
-        `INSERT INTO locations (campaign_id, name, description, location_type, parent_location_id)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO locations (campaign_id, name, description, location_type, parent_location_id, visibility, created_by_user_id, last_updated_by_user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         campaignId,
         name.trim(),
         description || null,
         location_type || null,
-        parent_location_id || null
+        parent_location_id || null,
+        visibility || "dm-only",
+        userId, // created_by_user_id
+        userId  // last_updated_by_user_id
       );
 
     const newLocation = db
-      .prepare("SELECT * FROM locations WHERE id = ?")
+      .prepare(`
+        SELECT l.*, 
+               creator.username as created_by_username, creator.email as created_by_email,
+               updater.username as last_updated_by_username, updater.email as last_updated_by_email
+        FROM locations l
+        LEFT JOIN users creator ON l.created_by_user_id = creator.id
+        LEFT JOIN users updater ON l.last_updated_by_user_id = updater.id
+        WHERE l.id = ?
+      `)
       .get(result.lastInsertRowid);
 
     // Get parent location name if it exists
@@ -182,10 +231,11 @@ router.post("/:campaignId/locations", requireCampaignOwnership, (req, res) => {
 });
 
 // PUT /api/campaigns/:campaignId/locations/:id
-router.put("/:campaignId/locations/:id", requireCampaignOwnership, (req, res) => {
+router.put("/:campaignId/locations/:id", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id } = req.params;
-    const { name, description, location_type, parent_location_id } = req.body;
+    const { name, description, location_type, parent_location_id, visibility } = req.body;
+    const userId = req.user.id;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: "Location name is required" });
@@ -221,19 +271,29 @@ router.put("/:campaignId/locations/:id", requireCampaignOwnership, (req, res) =>
 
     db.prepare(
       `UPDATE locations 
-       SET name = ?, description = ?, location_type = ?, parent_location_id = ?, updated_at = CURRENT_TIMESTAMP
+       SET name = ?, description = ?, location_type = ?, parent_location_id = ?, visibility = ?, updated_at = CURRENT_TIMESTAMP, last_updated_by_user_id = ?
        WHERE id = ? AND campaign_id = ?`
     ).run(
       name.trim(),
       description || null,
       location_type || null,
       parent_location_id || null,
+      visibility || "dm-only",
+      userId, // last_updated_by_user_id
       id,
       campaignId
     );
 
     const updatedLocation = db
-      .prepare("SELECT * FROM locations WHERE id = ?")
+      .prepare(`
+        SELECT l.*, 
+               creator.username as created_by_username, creator.email as created_by_email,
+               updater.username as last_updated_by_username, updater.email as last_updated_by_email
+        FROM locations l
+        LEFT JOIN users creator ON l.created_by_user_id = creator.id
+        LEFT JOIN users updater ON l.last_updated_by_user_id = updater.id
+        WHERE l.id = ?
+      `)
       .get(id);
 
     // Get parent location name if it exists
@@ -256,7 +316,7 @@ router.put("/:campaignId/locations/:id", requireCampaignOwnership, (req, res) =>
 });
 
 // DELETE /api/campaigns/:campaignId/locations/:id
-router.delete("/:campaignId/locations/:id", requireCampaignOwnership, (req, res) => {
+router.delete("/:campaignId/locations/:id", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id } = req.params;
 

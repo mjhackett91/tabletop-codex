@@ -1,6 +1,6 @@
 // client/src/pages/Locations.jsx - Locations management page
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -29,6 +29,10 @@ import {
   FormControl,
   InputLabel,
   Select,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -49,6 +53,7 @@ const LOCATION_TYPES = [
 
 export default function Locations() {
   const { id: campaignId } = useParams();
+  const location = useLocation();
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
@@ -57,7 +62,8 @@ export default function Locations() {
     name: "", 
     description: "", 
     location_type: "",
-    parent_location_id: null
+    parent_location_id: null,
+    visibility: "dm-only"
   });
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
 
@@ -89,6 +95,44 @@ export default function Locations() {
     fetchLocations();
   }, [campaignId]);
 
+  // Check for navigation state to auto-open entity dialog
+  useEffect(() => {
+    if (location.state?.openEntityId && locations.length > 0) {
+      const entityId = location.state.openEntityId;
+      const entityType = location.state.entityType;
+      
+      console.log("[Locations] Navigation state detected:", {
+        entityId,
+        entityType,
+        locationsCount: locations.length,
+        locationIds: locations.map(l => l.id)
+      });
+      
+      if (entityType === "location") {
+        // Normalize IDs to numbers for comparison (handle both string and number IDs)
+        const entityIdNum = typeof entityId === 'string' ? parseInt(entityId, 10) : entityId;
+        console.log("[Locations] Looking for location with ID:", entityId, "(normalized:", entityIdNum, ")");
+        const foundLocation = locations.find(l => {
+          const locIdNum = typeof l.id === 'string' ? parseInt(l.id, 10) : l.id;
+          return locIdNum === entityIdNum;
+        });
+        if (foundLocation) {
+          console.log("[Locations] Found location, opening dialog:", foundLocation.name);
+          handleOpenDialog(foundLocation);
+          // Clear the state to prevent re-opening on re-render
+          window.history.replaceState({}, document.title);
+        } else {
+          console.log("[Locations] Location not found with ID:", entityId, "(normalized:", entityIdNum, ")");
+        }
+      }
+    } else if (location.state?.openEntityId) {
+      console.log("[Locations] Navigation state detected but locations not loaded yet:", {
+        entityId: location.state.openEntityId,
+        locationsCount: locations.length
+      });
+    }
+  }, [location.state, locations]);
+
   const handleOpenDialog = (location = null) => {
     if (location) {
       setEditingLocation(location);
@@ -96,7 +140,8 @@ export default function Locations() {
         name: location.name || "",
         description: location.description || "",
         location_type: location.location_type || "",
-        parent_location_id: location.parent_location_id || null
+        parent_location_id: location.parent_location_id || null,
+        visibility: location.visibility || "dm-only"
       });
     } else {
       setEditingLocation(null);
@@ -104,7 +149,8 @@ export default function Locations() {
         name: "",
         description: "",
         location_type: "",
-        parent_location_id: null
+        parent_location_id: null,
+        visibility: "dm-only"
       });
     }
     setOpenDialog(true);
@@ -113,7 +159,7 @@ export default function Locations() {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingLocation(null);
-    setFormData({ name: "", description: "", location_type: "", parent_location_id: null });
+    setFormData({ name: "", description: "", location_type: "", parent_location_id: null, visibility: "dm-only" });
   };
 
   const handleSubmit = async () => {
@@ -131,7 +177,8 @@ export default function Locations() {
         name: formData.name.trim(),
         description: formData.description || "",
         location_type: formData.location_type || null,
-        parent_location_id: formData.parent_location_id || null
+        parent_location_id: formData.parent_location_id || null,
+        visibility: formData.visibility
       };
 
       if (editingLocation) {
@@ -191,7 +238,18 @@ export default function Locations() {
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString();
+    try {
+      // If it's a date-only string (YYYY-MM-DD), parse it as local date to avoid timezone issues
+      if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [year, month, day] = dateString.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // month is 0-indexed in Date constructor
+        return date.toLocaleDateString();
+      }
+      // For datetime strings, parse normally but use local timezone
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return dateString;
+    }
   };
 
   // Filter out current location from parent options (to prevent cycles)
@@ -341,9 +399,16 @@ export default function Locations() {
                     />
                   </TableCell>
                   <TableCell>
-                    <Typography color="text.secondary">
-                      {formatDate(location.created_at)}
-                    </Typography>
+                    <Box>
+                      <Typography color="text.secondary" variant="body2">
+                        {formatDate(location.created_at)}
+                      </Typography>
+                      {location.created_by_username && (
+                        <Typography color="text.secondary" variant="caption" display="block">
+                          by {location.created_by_username}
+                        </Typography>
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                     <IconButton
@@ -387,6 +452,14 @@ export default function Locations() {
           {editingLocation ? "Edit Location" : "New Location"}
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
             {editingLocation ? "Update" : "Create"} a location for this campaign
+            {editingLocation && editingLocation.created_by_username && (
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                Created by {editingLocation.created_by_username} on {formatDate(editingLocation.created_at)}
+                {editingLocation.last_updated_by_username && editingLocation.last_updated_by_username !== editingLocation.created_by_username && (
+                  <> • Last updated by {editingLocation.last_updated_by_username} on {formatDate(editingLocation.updated_at)}</>
+                )}
+              </Typography>
+            )}
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
@@ -440,7 +513,40 @@ export default function Locations() {
                 value={formData.description}
                 onChange={(html) => setFormData({ ...formData, description: html })}
                 placeholder="Enter location description..."
+                campaignId={campaignId}
               />
+            </Box>
+
+            <Box>
+              <FormControl component="fieldset">
+                <FormLabel component="legend">Visibility</FormLabel>
+                <RadioGroup
+                  row
+                  value={formData.visibility}
+                  onChange={(e) => setFormData({ ...formData, visibility: e.target.value })}
+                >
+                  <FormControlLabel 
+                    value="dm-only" 
+                    control={<Radio />} 
+                    label="DM Only" 
+                  />
+                  <FormControlLabel 
+                    value="player-visible" 
+                    control={<Radio />} 
+                    label="DM & Players" 
+                  />
+                  <FormControlLabel 
+                    value="hidden" 
+                    control={<Radio />} 
+                    label="Hidden" 
+                  />
+                </RadioGroup>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                  {formData.visibility === "dm-only" && "Only DMs can see this location"}
+                  {formData.visibility === "player-visible" && "Both DMs and players can see this location"}
+                  {formData.visibility === "hidden" && "Hidden from all participants"}
+                </Typography>
+              </FormControl>
             </Box>
           </Box>
         </DialogContent>

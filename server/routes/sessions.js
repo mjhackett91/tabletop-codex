@@ -2,7 +2,7 @@
 import express from "express";
 import db from "../db.js";
 import { authenticateToken } from "../middleware/auth.js";
-import { requireCampaignOwnership } from "../utils/campaignOwnership.js";
+import { requireCampaignAccess, requireCampaignDM } from "../middleware/participantAccess.js";
 
 const router = express.Router({ mergeParams: true });
 
@@ -10,27 +10,55 @@ const router = express.Router({ mergeParams: true });
 router.use(authenticateToken);
 
 // GET /api/campaigns/:campaignId/sessions
-router.get("/:campaignId/sessions", requireCampaignOwnership, (req, res) => {
+router.get("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
   try {
     const { campaignId } = req.params;
     const { search } = req.query;
+    const userRole = req.userCampaignRole;
+
+    console.log(`[Sessions GET] Campaign: ${campaignId}, UserRole: ${userRole}, UserId: ${req.user?.id}`);
 
     if (!campaignId) {
       return res.status(400).json({ error: "Campaign ID is required" });
     }
 
-    let query = "SELECT * FROM sessions WHERE campaign_id = ?";
+    if (!userRole) {
+      console.error(`[Sessions GET] userRole is undefined for user ${req.user?.id} in campaign ${campaignId}`);
+      return res.status(403).json({ error: "Access denied - no role assigned" });
+    }
+
+    let query = `
+      SELECT s.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM sessions s
+      LEFT JOIN users creator ON s.created_by_user_id = creator.id
+      LEFT JOIN users updater ON s.last_updated_by_user_id = updater.id
+      WHERE s.campaign_id = ?
+    `;
     const params = [campaignId];
 
+    // Filter by visibility: players only see player-visible, DMs see all except hidden
+    if (userRole === "player") {
+      query += " AND s.visibility = 'player-visible'";
+    } else if (userRole === "dm") {
+      query += " AND s.visibility != 'hidden'";
+    } else {
+      console.error(`[Sessions GET] Invalid userRole: ${userRole}`);
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     if (search) {
-      query += " AND (title LIKE ? OR notes LIKE ?)";
+      query += " AND (s.title LIKE ? OR s.summary LIKE ?)";
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
     }
 
-    query += " ORDER BY date_played DESC, session_number DESC, created_at DESC";
+    query += " ORDER BY s.date_played DESC, s.session_number DESC, s.created_at DESC";
 
+    console.log(`[Sessions GET] Executing query: ${query} with params:`, params);
     const sessions = db.prepare(query).all(...params);
+    console.log(`[Sessions GET] Found ${sessions.length} sessions`);
 
     res.json(sessions);
   } catch (error) {
@@ -41,13 +69,32 @@ router.get("/:campaignId/sessions", requireCampaignOwnership, (req, res) => {
 });
 
 // GET /api/campaigns/:campaignId/sessions/:id
-router.get("/:campaignId/sessions/:id", requireCampaignOwnership, (req, res) => {
+router.get("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
   try {
     const { campaignId, id } = req.params;
+    const userRole = req.userCampaignRole;
 
-    const session = db
-      .prepare("SELECT * FROM sessions WHERE id = ? AND campaign_id = ?")
-      .get(id, campaignId);
+    let query = `
+      SELECT s.*, 
+             creator.username as created_by_username, creator.email as created_by_email,
+             updater.username as last_updated_by_username, updater.email as last_updated_by_email
+      FROM sessions s
+      LEFT JOIN users creator ON s.created_by_user_id = creator.id
+      LEFT JOIN users updater ON s.last_updated_by_user_id = updater.id
+      WHERE s.id = ? AND s.campaign_id = ?
+    `;
+    const params = [id, campaignId];
+
+    // Filter by visibility
+    if (userRole === "player") {
+      query += " AND s.visibility = 'player-visible'";
+    } else if (userRole === "dm") {
+      query += " AND s.visibility != 'hidden'";
+    } else {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    const session = db.prepare(query).get(...params);
 
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
@@ -58,7 +105,28 @@ router.get("/:campaignId/sessions/:id", requireCampaignOwnership, (req, res) => 
       .prepare("SELECT * FROM session_notes WHERE session_id = ?")
       .all(id);
 
-    res.json({ ...session, session_notes: sessionNotes });
+    // Get player session notes (filtered by visibility)
+    let playerNotesQuery = `
+      SELECT psn.*, u.username, u.email 
+      FROM player_session_notes psn 
+      JOIN users u ON psn.user_id = u.id 
+      WHERE psn.session_id = ?
+    `;
+    const playerNotesParams = [id];
+    
+    if (userRole === "player") {
+      playerNotesQuery += " AND psn.visibility = 'player-visible'";
+    }
+    
+    playerNotesQuery += " ORDER BY psn.created_at ASC";
+    
+    const playerNotes = db.prepare(playerNotesQuery).all(...playerNotesParams);
+
+    res.json({ 
+      ...session, 
+      session_notes: sessionNotes,
+      player_notes: playerNotes
+    });
   } catch (error) {
     console.error("Error fetching session:", error);
     res.status(500).json({ error: "Failed to fetch session" });
@@ -66,7 +134,8 @@ router.get("/:campaignId/sessions/:id", requireCampaignOwnership, (req, res) => 
 });
 
 // POST /api/campaigns/:campaignId/sessions
-router.post("/:campaignId/sessions", requireCampaignOwnership, (req, res) => {
+// Allow both DMs and players to create sessions
+router.post("/:campaignId/sessions", requireCampaignAccess, (req, res) => {
   try {
     const { campaignId } = req.params;
     const { 
@@ -80,8 +149,11 @@ router.post("/:campaignId/sessions", requireCampaignOwnership, (req, res) => {
       notes_locations,
       notes_factions,
       notes_world_info,
-      notes_quests
+      notes_quests,
+      visibility
     } = req.body;
+    const userId = req.user.id;
+    const userRole = req.userCampaignRole;
 
     // Auto-increment session number if not provided
     let finalSessionNumber = session_number;
@@ -92,14 +164,18 @@ router.post("/:campaignId/sessions", requireCampaignOwnership, (req, res) => {
       finalSessionNumber = lastSession ? (lastSession.session_number || 0) + 1 : 1;
     }
 
+    // Default visibility: player-visible for players, dm-only for DMs
+    const defaultVisibility = userRole === "player" ? "player-visible" : "dm-only";
+
     const result = db
       .prepare(
         `INSERT INTO sessions (
           campaign_id, session_number, title, date_played, summary,
           notes_characters, notes_npcs, notes_antagonists, notes_locations,
-          notes_factions, notes_world_info, notes_quests
+          notes_factions, notes_world_info, notes_quests, visibility,
+          created_by_user_id, last_updated_by_user_id
         )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         campaignId,
@@ -113,7 +189,10 @@ router.post("/:campaignId/sessions", requireCampaignOwnership, (req, res) => {
         notes_locations || null,
         notes_factions || null,
         notes_world_info || null,
-        notes_quests || null
+        notes_quests || null,
+        visibility || defaultVisibility,
+        userId, // created_by_user_id
+        userId  // last_updated_by_user_id
       );
 
     const newSession = db
@@ -128,7 +207,8 @@ router.post("/:campaignId/sessions", requireCampaignOwnership, (req, res) => {
 });
 
 // PUT /api/campaigns/:campaignId/sessions/:id
-router.put("/:campaignId/sessions/:id", requireCampaignOwnership, (req, res) => {
+// Allow both DMs and players to edit sessions (players can only edit their own)
+router.put("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
   try {
     const { campaignId, id } = req.params;
     const { 
@@ -142,16 +222,24 @@ router.put("/:campaignId/sessions/:id", requireCampaignOwnership, (req, res) => 
       notes_locations,
       notes_factions,
       notes_world_info,
-      notes_quests
+      notes_quests,
+      visibility
     } = req.body;
+    const userId = req.user.id;
+    const userRole = req.userCampaignRole;
 
     // Check if session exists and belongs to campaign
     const existing = db
-      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
+      .prepare("SELECT id, created_by_user_id FROM sessions WHERE id = ? AND campaign_id = ?")
       .get(id, campaignId);
 
     if (!existing) {
       return res.status(404).json({ error: "Session not found" });
+    }
+
+    // Players can only edit sessions they created
+    if (userRole === "player" && existing.created_by_user_id !== userId) {
+      return res.status(403).json({ error: "You can only edit sessions you created" });
     }
 
     db.prepare(
@@ -159,7 +247,8 @@ router.put("/:campaignId/sessions/:id", requireCampaignOwnership, (req, res) => 
        SET session_number = ?, title = ?, date_played = ?, summary = ?,
            notes_characters = ?, notes_npcs = ?, notes_antagonists = ?,
            notes_locations = ?, notes_factions = ?, notes_world_info = ?,
-           notes_quests = ?, updated_at = CURRENT_TIMESTAMP
+           notes_quests = ?, visibility = ?, updated_at = CURRENT_TIMESTAMP,
+           last_updated_by_user_id = ?
        WHERE id = ? AND campaign_id = ?`
     ).run(
       session_number || null,
@@ -173,6 +262,8 @@ router.put("/:campaignId/sessions/:id", requireCampaignOwnership, (req, res) => 
       notes_factions || null,
       notes_world_info || null,
       notes_quests || null,
+      visibility !== undefined ? visibility : existing.visibility || "dm-only",
+      userId, // last_updated_by_user_id
       id,
       campaignId
     );
@@ -189,21 +280,30 @@ router.put("/:campaignId/sessions/:id", requireCampaignOwnership, (req, res) => 
 });
 
 // DELETE /api/campaigns/:campaignId/sessions/:id
-router.delete("/:campaignId/sessions/:id", requireCampaignOwnership, (req, res) => {
+// DMs can delete any session, players can only delete their own
+router.delete("/:campaignId/sessions/:id", requireCampaignAccess, (req, res) => {
   try {
     const { campaignId, id } = req.params;
+    const userId = req.user.id;
+    const userRole = req.userCampaignRole;
 
     // Check if session exists and belongs to campaign
     const session = db
-      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
+      .prepare("SELECT id, created_by_user_id FROM sessions WHERE id = ? AND campaign_id = ?")
       .get(id, campaignId);
 
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
 
+    // Players can only delete sessions they created
+    if (userRole === "player" && session.created_by_user_id !== userId) {
+      return res.status(403).json({ error: "You can only delete sessions you created" });
+    }
+
     // Delete session notes first (CASCADE should handle this, but being explicit)
     db.prepare("DELETE FROM session_notes WHERE session_id = ?").run(id);
+    db.prepare("DELETE FROM player_session_notes WHERE session_id = ?").run(id);
     
     // Delete session
     db.prepare("DELETE FROM sessions WHERE id = ? AND campaign_id = ?").run(id, campaignId);
@@ -216,7 +316,7 @@ router.delete("/:campaignId/sessions/:id", requireCampaignOwnership, (req, res) 
 });
 
 // POST /api/campaigns/:campaignId/sessions/:id/notes
-router.post("/:campaignId/sessions/:id/notes", requireCampaignOwnership, (req, res) => {
+router.post("/:campaignId/sessions/:id/notes", requireCampaignDM, (req, res) => {
   try {
     const { campaignId, id: sessionId } = req.params;
     const { entity_type, entity_id, quick_note, detailed_note } = req.body;
@@ -259,19 +359,26 @@ router.post("/:campaignId/sessions/:id/notes", requireCampaignOwnership, (req, r
 });
 
 // POST /api/campaigns/:campaignId/sessions/:id/post-notes
-// Post session notes to their respective entities
-router.post("/:campaignId/sessions/:id/post-notes", requireCampaignOwnership, async (req, res) => {
+// Post session notes to their respective entities (DMs and session creators can post notes)
+router.post("/:campaignId/sessions/:id/post-notes", requireCampaignAccess, async (req, res) => {
   try {
     const { campaignId, id: sessionId } = req.params;
     const { entity_type, entity_id, note_content } = req.body;
 
     // Verify session belongs to campaign
     const session = db
-      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
+      .prepare("SELECT id, created_by_user_id FROM sessions WHERE id = ? AND campaign_id = ?")
       .get(sessionId, campaignId);
 
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
+    }
+
+    // Players can only post notes to sessions they created, DMs can post to any session
+    const userId = req.user.id;
+    const userRole = req.userCampaignRole;
+    if (userRole === "player" && session.created_by_user_id !== userId) {
+      return res.status(403).json({ error: "You can only post notes to sessions you created" });
     }
 
     if (!entity_type || !entity_id || !note_content) {
@@ -327,6 +434,191 @@ router.post("/:campaignId/sessions/:id/post-notes", requireCampaignOwnership, as
   } catch (error) {
     console.error("Error posting note to entity:", error);
     res.status(500).json({ error: "Failed to post note to entity" });
+  }
+});
+
+// GET /api/campaigns/:campaignId/sessions/:id/player-notes
+// Get player session notes for a session (filtered by visibility)
+router.get("/:campaignId/sessions/:id/player-notes", requireCampaignAccess, (req, res) => {
+  try {
+    const { campaignId, id: sessionId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.userCampaignRole;
+
+    // Verify session belongs to campaign
+    const session = db
+      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
+      .get(sessionId, campaignId);
+
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    let query = "SELECT psn.*, u.username, u.email FROM player_session_notes psn JOIN users u ON psn.user_id = u.id WHERE psn.session_id = ?";
+    const params = [sessionId];
+
+    // Filter by visibility: players only see player-visible notes, DMs see all
+    if (userRole === "player") {
+      query += " AND psn.visibility = 'player-visible'";
+    }
+
+    query += " ORDER BY psn.created_at ASC";
+
+    const notes = db.prepare(query).all(...params);
+
+    res.json(notes);
+  } catch (error) {
+    console.error("Error fetching player session notes:", error);
+    res.status(500).json({ error: "Failed to fetch player session notes" });
+  }
+});
+
+// POST /api/campaigns/:campaignId/sessions/:id/player-notes
+// Players can add session notes (always visible to DM, optionally to other players)
+router.post("/:campaignId/sessions/:id/player-notes", requireCampaignAccess, (req, res) => {
+  try {
+    const { campaignId, id: sessionId } = req.params;
+    const { note_content, visibility } = req.body;
+    const userId = req.user.id;
+    const userRole = req.userCampaignRole;
+
+    // Verify session belongs to campaign
+    const session = db
+      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
+      .get(sessionId, campaignId);
+
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    if (!note_content || !note_content.trim()) {
+      return res.status(400).json({ error: "Note content is required" });
+    }
+
+    // Players can only set visibility to 'dm-only' or 'player-visible'
+    // DMs can also add player notes (useful for consistency)
+    const finalVisibility = visibility === "player-visible" ? "player-visible" : "dm-only";
+
+    const result = db
+      .prepare(
+        `INSERT INTO player_session_notes (session_id, user_id, note_content, visibility)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(sessionId, userId, note_content.trim(), finalVisibility);
+
+    const newNote = db
+      .prepare(`
+        SELECT psn.*, u.username, u.email 
+        FROM player_session_notes psn 
+        JOIN users u ON psn.user_id = u.id 
+        WHERE psn.id = ?
+      `)
+      .get(result.lastInsertRowid);
+
+    res.status(201).json(newNote);
+  } catch (error) {
+    console.error("Error creating player session note:", error);
+    res.status(500).json({ error: "Failed to create player session note" });
+  }
+});
+
+// PUT /api/campaigns/:campaignId/sessions/:id/player-notes/:noteId
+// Players can update their own session notes
+router.put("/:campaignId/sessions/:id/player-notes/:noteId", requireCampaignAccess, (req, res) => {
+  try {
+    const { campaignId, id: sessionId, noteId } = req.params;
+    const { note_content, visibility } = req.body;
+    const userId = req.user.id;
+    const userRole = req.userCampaignRole;
+
+    // Verify session belongs to campaign
+    const session = db
+      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
+      .get(sessionId, campaignId);
+
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    // Get existing note
+    const existing = db
+      .prepare("SELECT * FROM player_session_notes WHERE id = ? AND session_id = ?")
+      .get(noteId, sessionId);
+
+    if (!existing) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+
+    // Players can only edit their own notes, DMs can edit any note
+    if (userRole === "player" && existing.user_id !== userId) {
+      return res.status(403).json({ error: "You can only edit your own notes" });
+    }
+
+    if (!note_content || !note_content.trim()) {
+      return res.status(400).json({ error: "Note content is required" });
+    }
+
+    const finalVisibility = visibility === "player-visible" ? "player-visible" : "dm-only";
+
+    db.prepare(
+      `UPDATE player_session_notes 
+       SET note_content = ?, visibility = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND session_id = ?`
+    ).run(note_content.trim(), finalVisibility, noteId, sessionId);
+
+    const updated = db
+      .prepare(`
+        SELECT psn.*, u.username, u.email 
+        FROM player_session_notes psn 
+        JOIN users u ON psn.user_id = u.id 
+        WHERE psn.id = ?
+      `)
+      .get(noteId);
+
+    res.json(updated);
+  } catch (error) {
+    console.error("Error updating player session note:", error);
+    res.status(500).json({ error: "Failed to update player session note" });
+  }
+});
+
+// DELETE /api/campaigns/:campaignId/sessions/:id/player-notes/:noteId
+// Players can delete their own session notes, DMs can delete any
+router.delete("/:campaignId/sessions/:id/player-notes/:noteId", requireCampaignAccess, (req, res) => {
+  try {
+    const { campaignId, id: sessionId, noteId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.userCampaignRole;
+
+    // Verify session belongs to campaign
+    const session = db
+      .prepare("SELECT id FROM sessions WHERE id = ? AND campaign_id = ?")
+      .get(sessionId, campaignId);
+
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    // Get existing note
+    const existing = db
+      .prepare("SELECT * FROM player_session_notes WHERE id = ? AND session_id = ?")
+      .get(noteId, sessionId);
+
+    if (!existing) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+
+    // Players can only delete their own notes, DMs can delete any
+    if (userRole === "player" && existing.user_id !== userId) {
+      return res.status(403).json({ error: "You can only delete your own notes" });
+    }
+
+    db.prepare("DELETE FROM player_session_notes WHERE id = ? AND session_id = ?").run(noteId, sessionId);
+
+    res.json({ message: "Note deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting player session note:", error);
+    res.status(500).json({ error: "Failed to delete player session note" });
   }
 });
 

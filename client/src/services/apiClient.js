@@ -36,6 +36,22 @@ async function apiRequest(endpoint, options = {}) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
+  // ⚠️ DEV MODE ONLY - Remove before production!
+  // Add simulated role header for dev testing
+  if (import.meta.env.DEV) {
+    // Extract campaign ID from endpoint (e.g., /api/campaigns/3/characters -> 3)
+    const campaignMatch = endpoint.match(/\/campaigns\/(\d+)/);
+    if (campaignMatch) {
+      const campaignId = campaignMatch[1];
+      const devRoleKey = `ttc_dev_campaign_role_${campaignId}`;
+      const simulatedRole = localStorage.getItem(devRoleKey);
+      if (simulatedRole) {
+        config.headers["X-Dev-Simulated-Role"] = simulatedRole;
+        config.headers["X-Dev-Campaign-Id"] = campaignId;
+      }
+    }
+  }
+
   try {
     const response = await fetch(url, config);
     
@@ -54,7 +70,8 @@ async function apiRequest(endpoint, options = {}) {
       if (response.status === 401) {
         throw new Error("Authentication required. Please login.");
       } else if (response.status === 403) {
-        throw new Error("Access denied. Invalid or expired token.");
+        // Use the actual error message from the server, don't override it
+        throw new Error(errorMessage || "Access denied");
       } else {
         throw new Error(fullError);
       }
