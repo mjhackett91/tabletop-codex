@@ -31,9 +31,6 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
   const [imageUrls, setImageUrls] = useState({}); // Cache of blob URLs
   const imageUrlsRef = useRef({}); // Keep ref for cleanup
 
-  const isDev = import.meta.env.DEV;
-  const baseURL = isDev ? "" : "http://backend:5000/api";
-
   useEffect(() => {
     if (campaignId && entityType && entityId) {
       fetchImages();
@@ -47,72 +44,41 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
     const loadImageUrls = async () => {
       const newUrls = {};
       const loadPromises = images.map(async (image) => {
-        // Skip if already loaded
-        if (imageUrls[image.id]) {
-          newUrls[image.id] = imageUrls[image.id];
+        // Skip if already loaded (check ref for current state)
+        if (imageUrlsRef.current[image.id]) {
+          newUrls[image.id] = imageUrlsRef.current[image.id];
           return;
         }
 
         try {
-          const endpoint = `/campaigns//images//file`;
-          const url = endpoint.startsWith("http")
-            ? endpoint
-            : isDev
-              ? endpoint
-              : ``;
+          // Use relative endpoint - apiClient automatically prepends /api
+          const endpoint = `/campaigns/${campaignId}/images/${image.id}/file`;
           
-          const token = localStorage.getItem("token");
-          const headers = {};
-          if (token) {
-            headers.Authorization = `Bearer ${token}`;
-          }
-
-          console.log("[ImageGallery] Fetching image:", url, "Headers:", Object.keys(headers));
-          const response = await fetch(url, { headers });
-          console.log("[ImageGallery] Response status:", response.status, response.statusText);
-          console.log("[ImageGallery] Response headers:", {
-            contentType: response.headers.get('content-type'),
-            contentLength: response.headers.get('content-length')
+          console.log("[ImageGallery] Fetching image:", endpoint);
+          const blob = await apiClient.getBlob(endpoint);
+          
+          console.log("[ImageGallery] Blob received:", {
+            id: image.id,
+            size: blob.size,
+            type: blob.type,
+            expectedType: image.mime_type,
+            isEmpty: blob.size === 0
           });
           
-          if (response.ok) {
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.startsWith('image/')) {
-              const text = await response.text();
-              console.error("[ImageGallery] Server returned non-image content:", {
-                contentType,
-                preview: text.substring(0, 200)
-              });
-              return;
-            }
-            
-            const blob = await response.blob();
-            console.log("[ImageGallery] Blob created:", {
-              id: image.id,
-              size: blob.size,
-              type: blob.type,
-              expectedType: image.mime_type,
-              isEmpty: blob.size === 0
-            });
-            
-            if (blob.size === 0) {
-              console.error("[ImageGallery] Blob is empty for image", image.id);
-              return;
-            }
-            
-            // Verify it's actually an image blob
-            if (!blob.type.startsWith('image/')) {
-              console.error("[ImageGallery] Blob is not an image type:", blob.type);
-              return;
-            }
-            
-            const objectUrl = URL.createObjectURL(blob);
-            console.log("[ImageGallery] Created blob URL for image", image.id, ":", objectUrl);
-            newUrls[image.id] = objectUrl;
-          } else {
-            const errorText = await response.text();
-            console.error("[ImageGallery] Failed to load image:", response.status, errorText);
+          if (blob.size === 0) {
+            console.error("[ImageGallery] Blob is empty for image", image.id);
+            return;
           }
+          
+          // Verify it's actually an image blob
+          if (!blob.type || !blob.type.startsWith('image/')) {
+            console.error("[ImageGallery] Blob is not an image type:", blob.type);
+            return;
+          }
+          
+          const objectUrl = URL.createObjectURL(blob);
+          console.log("[ImageGallery] Created blob URL for image", image.id, ":", objectUrl);
+          newUrls[image.id] = objectUrl;
         } catch (error) {
           console.error("[ImageGallery] Error loading image:", image.id, error);
         }
@@ -131,7 +97,7 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
     };
 
     loadImageUrls();
-  }, [images, campaignId, isDev, baseURL]);
+  }, [images, campaignId]); // Don't include imageUrls to avoid infinite loops
 
   const fetchImages = async () => {
     try {
@@ -147,45 +113,6 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Fetch image as blob with authentication and create object URL
-  const getImageUrl = async (image) => {
-    // Return cached URL if available
-    if (imageUrls[image.id]) {
-      return imageUrls[image.id];
-    }
-
-    try {
-      const endpoint = `/campaigns//images//file`;
-      const url = endpoint.startsWith("http")
-            ? endpoint
-            : isDev
-              ? endpoint
-              : ``;
-      
-      const token = localStorage.getItem("token");
-      const headers = {};
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const response = await fetch(url, { headers });
-      if (!response.ok) {
-        throw new Error(`Failed to load image: ${response.statusText}`);
-      }
-      
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      
-      // Cache the URL
-      setImageUrls(prev => ({ ...prev, [image.id]: objectUrl }));
-      
-      return objectUrl;
-    } catch (error) {
-      console.error("Error loading image:", error);
-      return null;
     }
   };
 

@@ -289,7 +289,69 @@ Before going live:
 
 ## Public / HTTPS Deployment (Production)
 
-For public internet access with HTTPS, use **Nginx Proxy Manager** (included in production compose).
+For public internet access with HTTPS, you can use either:
+- **Cloudflare Tunnel** (recommended - no port forwarding needed, easier setup)
+- **Nginx Proxy Manager** (included in production compose - requires port forwarding)
+
+### Cloudflare Tunnel Setup (Recommended)
+
+**Benefits:**
+- ✅ No port forwarding needed on router
+- ✅ Automatic HTTPS via Cloudflare
+- ✅ DDoS protection included
+- ✅ No public IP exposure
+- ✅ Free SSL certificates
+- ✅ Works behind NAT/firewall
+
+**Setup Steps:**
+
+1. **Install Cloudflare Tunnel** (cloudflared) on your NAS/server
+   - See: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/
+
+2. **Configure Cloudflare Tunnel:**
+   ```yaml
+   # config.yml example
+   tunnel: your-tunnel-id
+   credentials-file: /path/to/credentials.json
+   
+   ingress:
+     - hostname: app.yourdomain.com
+       service: http://localhost:80
+     - hostname: api.yourdomain.com
+       service: http://localhost:5000
+     - service: http_status:404
+   ```
+
+3. **Start your Docker containers:**
+   ```bash
+   # With Cloudflare Tunnel, you need ports exposed on localhost
+   # Option 1: Use test compose (exposes ports for Cloudflare Tunnel)
+   docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --build
+   
+   # Option 2: Modify docker-compose.yml to expose ports, then:
+   # docker compose up -d --build
+   ```
+   
+   **Important:** Cloudflare Tunnel connects to `localhost:80` and `localhost:5000`, so these ports must be exposed on the host. The base `docker-compose.yml` uses `ports: []` (internal-only) which won't work with Cloudflare Tunnel. Use `docker-compose.test.yml` to expose ports, or manually add port mappings.
+
+4. **Configure CORS in `.env`:**
+   ```env
+   # Use your public Cloudflare domain (what users see in browser)
+   ALLOWED_ORIGINS=https://app.yourdomain.com
+   
+   # Or if using same domain for frontend/backend:
+   ALLOWED_ORIGINS=https://yourdomain.com
+   
+   # Frontend URL
+   FRONTEND_URL=https://app.yourdomain.com
+   ```
+
+5. **Debug CORS issues:**
+   - Check backend logs: `docker compose logs backend | grep CORS`
+   - The origin should be your Cloudflare domain (e.g., `https://app.yourdomain.com`)
+   - If CORS errors, verify `ALLOWED_ORIGINS` matches exactly (including `https://`)
+
+**Note:** With Cloudflare Tunnel, you don't need `docker-compose.prod.yml` since Cloudflare handles the reverse proxy. Use the base `docker-compose.yml` and expose ports as needed.
 
 ### Security Requirements
 
@@ -365,6 +427,12 @@ Update your `.env` file:
 FRONTEND_URL=https://app.yourdomain.com
 
 # CORS - Allow your frontend domain
+# CORS Configuration (for Cloudflare Tunnel or reverse proxy)
+# If using Cloudflare Tunnel:
+#   - Same domain: ALLOWED_ORIGINS=https://yourdomain.com
+#   - Subdomains: ALLOWED_ORIGINS=https://app.yourdomain.com (frontend domain only)
+# If using Nginx Proxy Manager:
+#   - ALLOWED_ORIGINS=https://app.yourdomain.com (frontend domain)
 ALLOWED_ORIGINS=https://app.yourdomain.com
 
 # Nginx Proxy Manager ports (if using custom ports)

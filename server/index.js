@@ -36,7 +36,7 @@ if (process.env.NODE_ENV === "production") {
 }
 
 const app = express();
-app.set('trust proxy', 1);
+app.set('trust proxy', 1); // Trust proxy headers (required for Cloudflare Tunnel, Nginx, etc.)
 
 
 // Security headers
@@ -57,12 +57,59 @@ app.use((req, res, next) => {
 });
 
 // CORS configuration - restrict origins in production
+// Cloudflare Tunnel: If frontend and backend use same domain, set ALLOWED_ORIGINS to that domain
+// If using subdomains (app.domain.com / api.domain.com), include the frontend domain
 const corsOptions = {
-  origin: process.env.NODE_ENV === "production" 
-    ? process.env.ALLOWED_ORIGINS?.split(",") || ["https://your-domain.com"]
-    : true, // Allow all origins in development
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, or server-to-server)
+    if (!origin) {
+      console.log("[CORS] Request with no origin header - allowing (server-to-server or direct request)");
+      return callback(null, true);
+    }
+    
+    if (process.env.NODE_ENV !== "production") {
+      // In development, allow all origins
+      console.log(`[CORS] Development mode - allowing origin: ${origin}`);
+      return callback(null, true);
+    }
+    
+    // In production, check ALLOWED_ORIGINS
+    const allowedOrigins = process.env.ALLOWED_ORIGINS 
+      ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim().toLowerCase())
+      : [];
+    
+    // Normalize origin for comparison (remove trailing slash, lowercase)
+    const normalizedOrigin = origin.toLowerCase().replace(/\/$/, "");
+    
+    // If ALLOWED_ORIGINS is not set, allow the origin (fallback for easier setup)
+    // This is less secure but helps with initial deployment behind Cloudflare Tunnel
+    if (allowedOrigins.length === 0) {
+      console.warn(`⚠️  WARNING: ALLOWED_ORIGINS not set in production. Allowing origin: ${origin} (not recommended for security)`);
+      console.warn(`⚠️  Set ALLOWED_ORIGINS in .env to restrict access`);
+      return callback(null, true);
+    }
+    
+    // Check if origin matches any allowed origin (with normalization)
+    const originMatches = allowedOrigins.some(allowed => {
+      const normalizedAllowed = allowed.replace(/\/$/, "");
+      return normalizedOrigin === normalizedAllowed;
+    });
+    
+    if (originMatches) {
+      console.log(`[CORS] ✅ Allowed origin: ${origin}`);
+      callback(null, true);
+    } else {
+      console.error(`❌ CORS blocked origin: ${origin}`);
+      console.error(`   Allowed origins: ${allowedOrigins.join(", ")}`);
+      console.error(`   Tip: If using Cloudflare Tunnel, set ALLOWED_ORIGINS to your frontend domain`);
+      callback(new Error(`Not allowed by CORS. Origin: ${origin} not in allowed list.`));
+    }
+  },
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  // Cloudflare Tunnel compatibility
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
 app.use(cors(corsOptions));
 

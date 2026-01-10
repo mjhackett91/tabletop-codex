@@ -1,26 +1,25 @@
 // client/src/services/apiClient.js
 /**
  * API Client for Table Top Codex
- * Uses VITE_API_URL environment variable for base URL (for production/Docker)
- * In dev mode, uses relative URLs that go through Vite proxy
+ * Always uses relative URLs that go through the reverse proxy (Nginx Proxy Manager)
+ * This ensures consistent routing in both dev and production environments
  */
-const isDev = import.meta.env.DEV;
-const baseURL = isDev ? "" : (import.meta.env.VITE_API_URL || "");
-
 /**
  * Base fetch wrapper with error handling
+ * All endpoints are relative and will be handled by the reverse proxy
+ * Automatically prepends /api to endpoints that don't already include it
  */
 async function apiRequest(endpoint, options = {}) {
-  // Ensure endpoint starts with /
-  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-  
-  // In dev, use relative URLs (Vite proxy handles /api)
-  // In prod, use full baseURL
-  const url = endpoint.startsWith("http") 
-    ? endpoint 
-    : isDev 
-      ? cleanEndpoint 
-      : `${baseURL}${cleanEndpoint}`;
+  // Skip /api prefix for absolute URLs
+  let url;
+  if (endpoint.startsWith("http")) {
+    url = endpoint;
+  } else {
+    // Ensure endpoint starts with /
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    // Prepend /api if not already present
+    url = cleanEndpoint.startsWith("/api/") ? cleanEndpoint : `/api${cleanEndpoint}`;
+  }
   
   const config = {
     headers: {
@@ -74,17 +73,74 @@ async function apiRequest(endpoint, options = {}) {
   }
 }
 
+/**
+ * Fetch binary data (e.g., images) as Blob
+ * @param {string} endpoint - Relative API endpoint
+ * @returns {Promise<Blob>} - Blob object
+ */
+async function apiRequestBlob(endpoint) {
+  // Skip /api prefix for absolute URLs
+  let url;
+  if (endpoint.startsWith("http")) {
+    url = endpoint;
+  } else {
+    // Ensure endpoint starts with /
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    // Prepend /api if not already present
+    url = cleanEndpoint.startsWith("/api/") ? cleanEndpoint : `/api${cleanEndpoint}`;
+  }
+  
+  const headers = {};
+  
+  // Add auth token if available
+  const token = localStorage.getItem("token");
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await fetch(url, { headers });
+    
+    if (!response.ok) {
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { error: response.statusText };
+      }
+      
+      const errorMessage = errorData.error || errorData.details || `HTTP ${response.status}: ${response.statusText}`;
+      throw new Error(errorMessage);
+    }
+
+    return await response.blob();
+  } catch (error) {
+    console.error("API blob request failed:", error);
+    throw error;
+  }
+}
+
 export const apiClient = {
   get: (endpoint) => apiRequest(endpoint, { method: "GET" }),
+  /**
+   * Get binary data as Blob (e.g., for images)
+   * @param {string} endpoint - Relative API endpoint
+   * @returns {Promise<Blob>} - Blob object
+   */
+  getBlob: (endpoint) => apiRequestBlob(endpoint),
   post: (endpoint, data) => {
     // If data is FormData, don't stringify and don't set Content-Type
     if (data instanceof FormData) {
-      const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-      const url = endpoint.startsWith("http") 
-        ? endpoint 
-        : isDev 
-          ? cleanEndpoint 
-          : `${baseURL}${cleanEndpoint}`;
+      // Skip /api prefix for absolute URLs
+      let url;
+      if (endpoint.startsWith("http")) {
+        url = endpoint;
+      } else {
+        // Ensure endpoint starts with /
+        const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+        // Prepend /api if not already present
+        url = cleanEndpoint.startsWith("/api/") ? cleanEndpoint : `/api${cleanEndpoint}`;
+      }
       
       const token = localStorage.getItem("token");
       const headers = {};
