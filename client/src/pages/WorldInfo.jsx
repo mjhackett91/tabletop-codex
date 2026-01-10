@@ -89,7 +89,7 @@ export default function WorldInfo() {
 
     try {
       console.log("Fetching world info for campaign:", campaignId);
-      const data = await apiClient.get(`/api/campaigns/${campaignId}/world-info`);
+      const data = await apiClient.get(`/campaigns/${campaignId}/world-info`);
       console.log("World info data received:", data);
       setWorldInfo(data);
     } catch (error) {
@@ -107,7 +107,7 @@ export default function WorldInfo() {
   // Fetch user role
   const fetchUserRole = async () => {
     try {
-      const roleData = await apiClient.get(`/api/campaigns/${campaignId}/my-role`);
+      const roleData = await apiClient.get(`/campaigns/${campaignId}/my-role`);
       setUserRole(roleData?.role || null);
     } catch (error) {
       console.error("Failed to fetch user role:", error);
@@ -144,7 +144,7 @@ export default function WorldInfo() {
   // Fetch tags for a world info entry
   const fetchWorldInfoTags = async (infoId) => {
     try {
-      const tags = await apiClient.get(`/api/campaigns/${campaignId}/entities/world_info/${infoId}/tags`);
+      const tags = await apiClient.get(`/campaigns/${campaignId}/entities/world_info/${infoId}/tags`);
       setSelectedTagIds(tags.map(tag => tag.id));
     } catch (error) {
       console.error("Failed to fetch world info tags:", error);
@@ -203,7 +203,7 @@ export default function WorldInfo() {
 
       let infoId;
       if (editingWorldInfo) {
-        await apiClient.put(`/api/campaigns/${campaignId}/world-info/${editingWorldInfo.id}`, payload);
+        await apiClient.put(`/campaigns/${campaignId}/world-info/${editingWorldInfo.id}`, payload);
         infoId = editingWorldInfo.id;
         setSnackbar({
           open: true,
@@ -211,7 +211,7 @@ export default function WorldInfo() {
           severity: "success"
         });
       } else {
-        const result = await apiClient.post(`/api/campaigns/${campaignId}/world-info`, payload);
+        const result = await apiClient.post(`/campaigns/${campaignId}/world-info`, payload);
         infoId = result.id;
         setSnackbar({
           open: true,
@@ -224,7 +224,7 @@ export default function WorldInfo() {
       if (infoId) {
         try {
           await apiClient.post(
-            `/api/campaigns/${campaignId}/entities/world_info/${infoId}/tags`,
+            `/campaigns/${campaignId}/entities/world_info/${infoId}/tags`,
             { tagIds: selectedTagIds }
           );
         } catch (error) {
@@ -250,7 +250,7 @@ export default function WorldInfo() {
     }
 
     try {
-      await apiClient.delete(`/api/campaigns/${campaignId}/world-info/${infoId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/world-info/${infoId}`);
       setSnackbar({
         open: true,
         message: "World info deleted successfully",

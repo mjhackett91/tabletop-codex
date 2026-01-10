@@ -18,7 +18,7 @@ export default function Home() {
 
     const fetchPing = async () => {
       try {
-        const data = await apiClient.get("/api/ping");
+        const data = await apiClient.get("/ping");
         setPingStatus(data.ok);
       } catch (error) {
         console.error('Failed to ping server:', error);

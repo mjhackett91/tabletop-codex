@@ -32,7 +32,7 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
   const imageUrlsRef = useRef({}); // Keep ref for cleanup
 
   const isDev = import.meta.env.DEV;
-  const baseURL = isDev ? "" : (import.meta.env.VITE_API_URL || "http://localhost:5000/api");
+  const baseURL = isDev ? "" : "http://backend:5000/api";
 
   useEffect(() => {
     if (campaignId && entityType && entityId) {
@@ -54,12 +54,12 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
         }
 
         try {
-          const endpoint = `/api/campaigns/${campaignId}/images/${image.id}/file`;
-          const url = endpoint.startsWith("http") 
-            ? endpoint 
-            : isDev 
-              ? endpoint 
-              : `${baseURL}${endpoint}`;
+          const endpoint = `/campaigns//images//file`;
+          const url = endpoint.startsWith("http")
+            ? endpoint
+            : isDev
+              ? endpoint
+              : ``;
           
           const token = localStorage.getItem("token");
           const headers = {};
@@ -136,7 +136,7 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
   const fetchImages = async () => {
     try {
       setLoading(true);
-      const data = await apiClient.get(`/api/campaigns/${campaignId}/images/${entityType}/${entityId}`);
+      const data = await apiClient.get(`/campaigns/${campaignId}/images/${entityType}/${entityId}`);
       setImages(data || []);
     } catch (error) {
       console.error("Failed to fetch images:", error);
@@ -158,12 +158,12 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
     }
 
     try {
-      const endpoint = `/api/campaigns/${campaignId}/images/${image.id}/file`;
-      const url = endpoint.startsWith("http") 
-        ? endpoint 
-        : isDev 
-          ? endpoint 
-          : `${baseURL}${endpoint}`;
+      const endpoint = `/campaigns//images//file`;
+      const url = endpoint.startsWith("http")
+            ? endpoint
+            : isDev
+              ? endpoint
+              : ``;
       
       const token = localStorage.getItem("token");
       const headers = {};
@@ -231,7 +231,7 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
 
     try {
       setUploading(true);
-      await apiClient.post(`/api/campaigns/${campaignId}/images/${entityType}/${entityId}`, formData);
+      await apiClient.post(`/campaigns/${campaignId}/images/${entityType}/${entityId}`, formData);
       setSnackbar({
         open: true,
         message: "Image uploaded successfully",
@@ -259,7 +259,7 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
     }
 
     try {
-      await apiClient.delete(`/api/campaigns/${campaignId}/images/${imageId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/images/${imageId}`);
       setSnackbar({
         open: true,
         message: "Image deleted successfully",

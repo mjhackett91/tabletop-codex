@@ -182,6 +182,8 @@ export async function sendPasswordResetEmail(to, resetToken, resetUrl) {
   }
 }
 
+export const isConfigured = () => emailConfigured;
+
 // Initialize on import
 initEmail();
 

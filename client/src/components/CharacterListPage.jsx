@@ -123,7 +123,7 @@ export default function CharacterListPage({ type }) {
 
     try {
       console.log("Fetching characters for campaign:", campaignId, "type:", type);
-      const data = await apiClient.get(`/api/campaigns/${campaignId}/characters?type=${type}`);
+      const data = await apiClient.get(`/campaigns/${campaignId}/characters?type=${type}`);
       console.log("Characters data received:", data);
       // Log tags for each character to debug
       if (Array.isArray(data)) {
@@ -145,8 +145,8 @@ export default function CharacterListPage({ type }) {
   const fetchParticipants = async () => {
     try {
       const [participantsData, roleData] = await Promise.all([
-        apiClient.get(`/api/campaigns/${campaignId}/participants`),
-        apiClient.get(`/api/campaigns/${campaignId}/my-role`)
+        apiClient.get(`/campaigns/${campaignId}/participants`),
+        apiClient.get(`/campaigns/${campaignId}/my-role`)
       ]);
       setParticipants(participantsData || []);
       setUserRole(roleData?.role || null);
@@ -248,7 +248,7 @@ export default function CharacterListPage({ type }) {
   // Fetch tags for a character
   const fetchCharacterTags = async (characterId) => {
     try {
-      const tags = await apiClient.get(`/api/campaigns/${campaignId}/entities/character/${characterId}/tags`);
+      const tags = await apiClient.get(`/campaigns/${campaignId}/entities/character/${characterId}/tags`);
       setSelectedTagIds(tags.map(tag => tag.id));
     } catch (error) {
       console.error("Failed to fetch character tags:", error);
@@ -362,11 +362,11 @@ export default function CharacterListPage({ type }) {
 
       let characterId;
       if (editingCharacter) {
-        const result = await apiClient.put(`/api/campaigns/${campaignId}/characters/${editingCharacter.id}`, payload);
+        const result = await apiClient.put(`/campaigns/${campaignId}/characters/${editingCharacter.id}`, payload);
         characterId = result?.id || editingCharacter.id;
         console.log(`[CharacterListPage] Updated character, ID: ${characterId}, result:`, result);
       } else {
-        const result = await apiClient.post(`/api/campaigns/${campaignId}/characters`, payload);
+        const result = await apiClient.post(`/campaigns/${campaignId}/characters`, payload);
         characterId = result?.id;
         console.log(`[CharacterListPage] Created character, ID: ${characterId}, result:`, result);
       }
@@ -376,7 +376,7 @@ export default function CharacterListPage({ type }) {
         try {
           console.log(`[CharacterListPage] Saving tags for character ${characterId}:`, selectedTagIds);
           const tagsResult = await apiClient.post(
-            `/api/campaigns/${campaignId}/entities/character/${characterId}/tags`,
+            `/campaigns/${campaignId}/entities/character/${characterId}/tags`,
             { tagIds: selectedTagIds || [] }
           );
           console.log(`[CharacterListPage] Tags saved successfully, received:`, tagsResult);
@@ -414,7 +414,7 @@ export default function CharacterListPage({ type }) {
     if (!window.confirm(`Are you sure you want to delete this ${config.label.toLowerCase()}?`)) return;
 
     try {
-      await apiClient.delete(`/api/campaigns/${campaignId}/characters/${id}`);
+      await apiClient.delete(`/campaigns/${campaignId}/characters/${id}`);
       await fetchCharacters();
       showSnackbar(`${config.label} deleted successfully`);
     } catch (error) {

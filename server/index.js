@@ -36,6 +36,8 @@ if (process.env.NODE_ENV === "production") {
 }
 
 const app = express();
+app.set('trust proxy', 1);
+
 
 // Security headers
 app.use((req, res, next) => {

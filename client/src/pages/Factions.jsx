@@ -83,7 +83,7 @@ export default function Factions() {
 
     try {
       console.log("Fetching factions for campaign:", campaignId);
-      const data = await apiClient.get(`/api/campaigns/${campaignId}/factions`);
+      const data = await apiClient.get(`/campaigns/${campaignId}/factions`);
       console.log("Factions data received:", data);
       setFactions(data);
     } catch (error) {
@@ -101,7 +101,7 @@ export default function Factions() {
   // Fetch user role
   const fetchUserRole = async () => {
     try {
-      const roleData = await apiClient.get(`/api/campaigns/${campaignId}/my-role`);
+      const roleData = await apiClient.get(`/campaigns/${campaignId}/my-role`);
       setUserRole(roleData?.role || null);
     } catch (error) {
       console.error("Failed to fetch user role:", error);
@@ -138,7 +138,7 @@ export default function Factions() {
   // Fetch tags for a faction
   const fetchFactionTags = async (factionId) => {
     try {
-      const tags = await apiClient.get(`/api/campaigns/${campaignId}/entities/faction/${factionId}/tags`);
+      const tags = await apiClient.get(`/campaigns/${campaignId}/entities/faction/${factionId}/tags`);
       setSelectedTagIds(tags.map(tag => tag.id));
     } catch (error) {
       console.error("Failed to fetch faction tags:", error);
@@ -201,7 +201,7 @@ export default function Factions() {
 
       let factionId;
       if (editingFaction) {
-        await apiClient.put(`/api/campaigns/${campaignId}/factions/${editingFaction.id}`, payload);
+        await apiClient.put(`/campaigns/${campaignId}/factions/${editingFaction.id}`, payload);
         factionId = editingFaction.id;
         setSnackbar({
           open: true,
@@ -209,7 +209,7 @@ export default function Factions() {
           severity: "success"
         });
       } else {
-        const result = await apiClient.post(`/api/campaigns/${campaignId}/factions`, payload);
+        const result = await apiClient.post(`/campaigns/${campaignId}/factions`, payload);
         factionId = result.id;
         setSnackbar({
           open: true,
@@ -222,7 +222,7 @@ export default function Factions() {
       if (factionId) {
         try {
           await apiClient.post(
-            `/api/campaigns/${campaignId}/entities/faction/${factionId}/tags`,
+            `/campaigns/${campaignId}/entities/faction/${factionId}/tags`,
             { tagIds: selectedTagIds }
           );
         } catch (error) {
@@ -248,7 +248,7 @@ export default function Factions() {
     }
 
     try {
-      await apiClient.delete(`/api/campaigns/${campaignId}/factions/${factionId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/factions/${factionId}`);
       setSnackbar({
         open: true,
         message: "Faction deleted successfully",

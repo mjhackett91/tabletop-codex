@@ -64,7 +64,7 @@ export default function TagSelector({
     try {
       setLoading(true);
       console.log("[TagSelector] Fetching tags for campaign:", campaignId);
-      const data = await apiClient.get(`/api/campaigns/${campaignId}/tags`);
+      const data = await apiClient.get(`/campaigns/${campaignId}/tags`);
       console.log("[TagSelector] Tags received:", data);
       setTags(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -107,7 +107,7 @@ export default function TagSelector({
     }
 
     try {
-      await apiClient.post(`/api/campaigns/${campaignId}/tags`, tagForm);
+      await apiClient.post(`/campaigns/${campaignId}/tags`, tagForm);
       setSnackbar({
         open: true,
         message: "Tag created successfully",
@@ -136,7 +136,7 @@ export default function TagSelector({
     }
 
     try {
-      await apiClient.put(`/api/campaigns/${campaignId}/tags/${editingTag.id}`, tagForm);
+      await apiClient.put(`/campaigns/${campaignId}/tags/${editingTag.id}`, tagForm);
       setSnackbar({
         open: true,
         message: "Tag updated successfully",
@@ -161,7 +161,7 @@ export default function TagSelector({
     }
 
     try {
-      await apiClient.delete(`/api/campaigns/${campaignId}/tags/${tagId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/tags/${tagId}`);
       setSnackbar({
         open: true,
         message: "Tag deleted successfully",

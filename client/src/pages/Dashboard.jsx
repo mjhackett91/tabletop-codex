@@ -70,7 +70,7 @@ export default function Dashboard() {
         return;
       }
 
-      const data = await apiClient.get("/api/campaigns");
+      const data = await apiClient.get("/campaigns");
       setCampaigns(data);
     } catch (error) {
       console.error("Error fetching campaigns:", error);
@@ -115,9 +115,9 @@ export default function Dashboard() {
   const handleSubmit = async () => {
     try {
       if (editingCampaign) {
-        await apiClient.put(`/api/campaigns/${editingCampaign.id}`, formData);
+        await apiClient.put(`/campaigns/${editingCampaign.id}`, formData);
       } else {
-        await apiClient.post("/api/campaigns", formData);
+        await apiClient.post("/campaigns", formData);
       }
 
       await fetchCampaigns();
@@ -141,7 +141,7 @@ export default function Dashboard() {
     if (!window.confirm("Are you sure you want to delete this campaign?")) return;
 
     try {
-      await apiClient.delete(`/api/campaigns/${id}`);
+      await apiClient.delete(`/campaigns/${id}`);
       await fetchCampaigns();
       setSnackbar({
         open: true,
@@ -190,7 +190,7 @@ export default function Dashboard() {
   const fetchParticipants = async (campaignId) => {
     setLoadingParticipants(true);
     try {
-      const data = await apiClient.get(`/api/campaigns/${campaignId}/participants`);
+      const data = await apiClient.get(`/campaigns/${campaignId}/participants`);
       setParticipants(data || []);
     } catch (error) {
       console.error("Failed to fetch participants:", error);
@@ -216,7 +216,7 @@ export default function Dashboard() {
 
     try {
       const response = await apiClient.post(
-        `/api/campaigns/${sharingCampaign.id}/participants/invite`,
+        `/campaigns/${sharingCampaign.id}/participants/invite`,
         { email: inviteEmail.trim(), role: inviteRole }
       );
       setSnackbar({
@@ -242,7 +242,7 @@ export default function Dashboard() {
     }
 
     try {
-      await apiClient.delete(`/api/campaigns/${sharingCampaign.id}/participants/${participantId}`);
+      await apiClient.delete(`/campaigns/${sharingCampaign.id}/participants/${participantId}`);
       setSnackbar({
         open: true,
         message: "Participant removed successfully",
@@ -262,7 +262,7 @@ export default function Dashboard() {
   const handleChangeRole = async (participantId, newRole) => {
     try {
       await apiClient.put(
-        `/api/campaigns/${sharingCampaign.id}/participants/${participantId}/role`,
+        `/campaigns/${sharingCampaign.id}/participants/${participantId}/role`,
         { role: newRole }
       );
       setSnackbar({

@@ -45,14 +45,14 @@ const RichTextEditor = ({
       const fetchEntities = async () => {
         try {
           const [playerChars, npcs, antagonists, locations, factions, worldInfo, quests, creatures] = await Promise.all([
-            apiClient.get(`/api/campaigns/${effectiveCampaignId}/characters?type=player`).catch(() => []),
-            apiClient.get(`/api/campaigns/${effectiveCampaignId}/characters?type=npc`).catch(() => []),
-            apiClient.get(`/api/campaigns/${effectiveCampaignId}/characters?type=antagonist`).catch(() => []),
-            apiClient.get(`/api/campaigns/${effectiveCampaignId}/locations`).catch(() => []),
-            apiClient.get(`/api/campaigns/${effectiveCampaignId}/factions`).catch(() => []),
-            apiClient.get(`/api/campaigns/${effectiveCampaignId}/world-info`).catch(() => []),
-            apiClient.get(`/api/campaigns/${effectiveCampaignId}/quests`).catch(() => []),
-            apiClient.get(`/api/campaigns/${effectiveCampaignId}/creatures`).catch(() => [])
+            apiClient.get(`/campaigns/${effectiveCampaignId}/characters?type=player`).catch(() => []),
+            apiClient.get(`/campaigns/${effectiveCampaignId}/characters?type=npc`).catch(() => []),
+            apiClient.get(`/campaigns/${effectiveCampaignId}/characters?type=antagonist`).catch(() => []),
+            apiClient.get(`/campaigns/${effectiveCampaignId}/locations`).catch(() => []),
+            apiClient.get(`/campaigns/${effectiveCampaignId}/factions`).catch(() => []),
+            apiClient.get(`/campaigns/${effectiveCampaignId}/world-info`).catch(() => []),
+            apiClient.get(`/campaigns/${effectiveCampaignId}/quests`).catch(() => []),
+            apiClient.get(`/campaigns/${effectiveCampaignId}/creatures`).catch(() => [])
           ]);
 
           const allCharacters = [

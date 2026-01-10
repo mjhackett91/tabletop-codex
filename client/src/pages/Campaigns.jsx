@@ -49,8 +49,8 @@ export default function Campaigns() {
         return;
       }
 
-      console.log("Making API call to /api/campaigns");
-      const data = await apiClient.get("/api/campaigns");
+      console.log("Making API call to /campaigns");
+      const data = await apiClient.get("/campaigns");
       console.log("Campaigns data received:", data);
       setCampaigns(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -105,9 +105,9 @@ export default function Campaigns() {
   const handleSubmit = async () => {
     try {
       if (editingCampaign) {
-        await apiClient.put(`/api/campaigns/${editingCampaign.id}`, formData);
+        await apiClient.put(`/campaigns/${editingCampaign.id}`, formData);
       } else {
-        await apiClient.post("/api/campaigns", formData);
+        await apiClient.post("/campaigns", formData);
       }
 
       await fetchCampaigns();
@@ -125,7 +125,7 @@ export default function Campaigns() {
     if (!window.confirm("Are you sure you want to delete this campaign?")) return;
 
     try {
-      await apiClient.delete(`/api/campaigns/${id}`);
+      await apiClient.delete(`/campaigns/${id}`);
       await fetchCampaigns();
       showSnackbar("Campaign deleted successfully");
     } catch (error) {

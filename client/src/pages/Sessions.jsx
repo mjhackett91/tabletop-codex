@@ -132,7 +132,7 @@ export default function Sessions() {
           console.error("Error parsing token:", e);
         }
       }
-      const roleData = await apiClient.get(`/api/campaigns/${campaignId}/my-role`);
+      const roleData = await apiClient.get(`/campaigns/${campaignId}/my-role`);
       setUserRole(roleData?.role || null);
     } catch (error) {
       console.error("Failed to fetch user role:", error);
@@ -148,7 +148,7 @@ export default function Sessions() {
 
     try {
       console.log("Fetching sessions for campaign:", campaignId);
-      const data = await apiClient.get(`/api/campaigns/${campaignId}/sessions`);
+      const data = await apiClient.get(`/campaigns/${campaignId}/sessions`);
       console.log("Sessions data received:", data);
       setSessions(data);
     } catch (error) {
@@ -171,7 +171,7 @@ export default function Sessions() {
     }
 
     try {
-      const notes = await apiClient.get(`/api/campaigns/${campaignId}/sessions/${sessionId}/player-notes`);
+      const notes = await apiClient.get(`/campaigns/${campaignId}/sessions/${sessionId}/player-notes`);
       setPlayerNotes(notes || []);
     } catch (error) {
       console.error("Failed to fetch player notes:", error);
@@ -192,13 +192,13 @@ export default function Sessions() {
     try {
       console.log("Fetching entities for campaign:", campaignId);
       const [characters, npcs, antagonists, locations, factions, worldInfo, quests] = await Promise.all([
-        apiClient.get(`/api/campaigns/${campaignId}/characters?type=player`).catch((e) => { console.error("Failed to fetch characters:", e); return []; }),
-        apiClient.get(`/api/campaigns/${campaignId}/characters?type=npc`).catch((e) => { console.error("Failed to fetch npcs:", e); return []; }),
-        apiClient.get(`/api/campaigns/${campaignId}/characters?type=antagonist`).catch((e) => { console.error("Failed to fetch antagonists:", e); return []; }),
-        apiClient.get(`/api/campaigns/${campaignId}/locations`).catch((e) => { console.error("Failed to fetch locations:", e); return []; }),
-        apiClient.get(`/api/campaigns/${campaignId}/factions`).catch((e) => { console.error("Failed to fetch factions:", e); return []; }),
-        apiClient.get(`/api/campaigns/${campaignId}/world-info`).catch((e) => { console.error("Failed to fetch world info:", e); return []; }),
-        apiClient.get(`/api/campaigns/${campaignId}/quests`).catch((e) => { console.error("Failed to fetch quests:", e); return []; })
+        apiClient.get(`/campaigns/${campaignId}/characters?type=player`).catch((e) => { console.error("Failed to fetch characters:", e); return []; }),
+        apiClient.get(`/campaigns/${campaignId}/characters?type=npc`).catch((e) => { console.error("Failed to fetch npcs:", e); return []; }),
+        apiClient.get(`/campaigns/${campaignId}/characters?type=antagonist`).catch((e) => { console.error("Failed to fetch antagonists:", e); return []; }),
+        apiClient.get(`/campaigns/${campaignId}/locations`).catch((e) => { console.error("Failed to fetch locations:", e); return []; }),
+        apiClient.get(`/campaigns/${campaignId}/factions`).catch((e) => { console.error("Failed to fetch factions:", e); return []; }),
+        apiClient.get(`/campaigns/${campaignId}/world-info`).catch((e) => { console.error("Failed to fetch world info:", e); return []; }),
+        apiClient.get(`/campaigns/${campaignId}/quests`).catch((e) => { console.error("Failed to fetch quests:", e); return []; })
       ]);
 
       console.log("Entities fetched:", { characters, npcs, antagonists, locations, factions, worldInfo, quests });
@@ -235,7 +235,7 @@ export default function Sessions() {
   // Fetch tags for a session
   const fetchSessionTags = async (sessionId) => {
     try {
-      const tags = await apiClient.get(`/api/campaigns/${campaignId}/entities/session/${sessionId}/tags`);
+      const tags = await apiClient.get(`/campaigns/${campaignId}/entities/session/${sessionId}/tags`);
       setSelectedTagIds(tags.map(tag => tag.id));
     } catch (error) {
       console.error("Failed to fetch session tags:", error);
@@ -346,7 +346,7 @@ export default function Sessions() {
 
       let sessionId;
       if (editingSession) {
-        await apiClient.put(`/api/campaigns/${campaignId}/sessions/${editingSession.id}`, payload);
+        await apiClient.put(`/campaigns/${campaignId}/sessions/${editingSession.id}`, payload);
         sessionId = editingSession.id;
         setSnackbar({
           open: true,
@@ -354,7 +354,7 @@ export default function Sessions() {
           severity: "success"
         });
       } else {
-        const result = await apiClient.post(`/api/campaigns/${campaignId}/sessions`, payload);
+        const result = await apiClient.post(`/campaigns/${campaignId}/sessions`, payload);
         sessionId = result.id;
         setSnackbar({
           open: true,
@@ -367,7 +367,7 @@ export default function Sessions() {
       if (sessionId) {
         try {
           await apiClient.post(
-            `/api/campaigns/${campaignId}/entities/session/${sessionId}/tags`,
+            `/campaigns/${campaignId}/entities/session/${sessionId}/tags`,
             { tagIds: selectedTagIds }
           );
         } catch (error) {
@@ -393,7 +393,7 @@ export default function Sessions() {
     }
 
     try {
-      await apiClient.delete(`/api/campaigns/${campaignId}/sessions/${sessionId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/sessions/${sessionId}`);
       setSnackbar({
         open: true,
         message: "Session deleted successfully",
@@ -521,7 +521,7 @@ export default function Sessions() {
       });
 
       const response = await apiClient.post(
-        `/api/campaigns/${campaignId}/sessions/${editingSession.id}/post-notes`,
+        `/campaigns/${campaignId}/sessions/${editingSession.id}/post-notes`,
         {
           entity_type: entityType,
           entity_id: parseInt(entityId),
@@ -566,7 +566,7 @@ export default function Sessions() {
       if (editingPlayerNote) {
         // Update existing note
         await apiClient.put(
-          `/api/campaigns/${campaignId}/sessions/${editingSession.id}/player-notes/${editingPlayerNote.id}`,
+          `/campaigns/${campaignId}/sessions/${editingSession.id}/player-notes/${editingPlayerNote.id}`,
           {
             note_content: playerNoteContent.trim(),
             visibility: playerNoteVisibility
@@ -580,7 +580,7 @@ export default function Sessions() {
       } else {
         // Create new note
         await apiClient.post(
-          `/api/campaigns/${campaignId}/sessions/${editingSession.id}/player-notes`,
+          `/campaigns/${campaignId}/sessions/${editingSession.id}/player-notes`,
           {
             note_content: playerNoteContent.trim(),
             visibility: playerNoteVisibility
@@ -616,7 +616,7 @@ export default function Sessions() {
 
     try {
       await apiClient.delete(
-        `/api/campaigns/${campaignId}/sessions/${editingSession.id}/player-notes/${noteId}`
+        `/campaigns/${campaignId}/sessions/${editingSession.id}/player-notes/${noteId}`
       );
       setSnackbar({
         open: true,

@@ -15,7 +15,7 @@ export default function Breadcrumbs() {
     if (campaignId) {
       // Fetch campaign name for breadcrumb
       apiClient
-        .get(`/api/campaigns/${campaignId}`)
+        .get(`/campaigns/${campaignId}`)
         .then((campaign) => {
           setCampaignName(campaign.name);
         })

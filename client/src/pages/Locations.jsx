@@ -84,7 +84,7 @@ export default function Locations() {
 
     try {
       console.log("Fetching locations for campaign:", campaignId);
-      const data = await apiClient.get(`/api/campaigns/${campaignId}/locations`);
+      const data = await apiClient.get(`/campaigns/${campaignId}/locations`);
       console.log("Locations data received:", data);
       setLocations(data);
     } catch (error) {
@@ -102,7 +102,7 @@ export default function Locations() {
   // Fetch user role
   const fetchUserRole = async () => {
     try {
-      const roleData = await apiClient.get(`/api/campaigns/${campaignId}/my-role`);
+      const roleData = await apiClient.get(`/campaigns/${campaignId}/my-role`);
       setUserRole(roleData?.role || null);
     } catch (error) {
       console.error("Failed to fetch user role:", error);
@@ -155,7 +155,7 @@ export default function Locations() {
   // Fetch tags for a location
   const fetchLocationTags = async (locationId) => {
     try {
-      const tags = await apiClient.get(`/api/campaigns/${campaignId}/entities/location/${locationId}/tags`);
+      const tags = await apiClient.get(`/campaigns/${campaignId}/entities/location/${locationId}/tags`);
       setSelectedTagIds(tags.map(tag => tag.id));
     } catch (error) {
       console.error("Failed to fetch location tags:", error);
@@ -218,7 +218,7 @@ export default function Locations() {
 
       let locationId;
       if (editingLocation) {
-        await apiClient.put(`/api/campaigns/${campaignId}/locations/${editingLocation.id}`, payload);
+        await apiClient.put(`/campaigns/${campaignId}/locations/${editingLocation.id}`, payload);
         locationId = editingLocation.id;
         setSnackbar({
           open: true,
@@ -226,7 +226,7 @@ export default function Locations() {
           severity: "success"
         });
       } else {
-        const result = await apiClient.post(`/api/campaigns/${campaignId}/locations`, payload);
+        const result = await apiClient.post(`/campaigns/${campaignId}/locations`, payload);
         locationId = result.id;
         setSnackbar({
           open: true,
@@ -239,7 +239,7 @@ export default function Locations() {
       if (locationId) {
         try {
           await apiClient.post(
-            `/api/campaigns/${campaignId}/entities/location/${locationId}/tags`,
+            `/campaigns/${campaignId}/entities/location/${locationId}/tags`,
             { tagIds: selectedTagIds }
           );
         } catch (error) {
@@ -265,7 +265,7 @@ export default function Locations() {
     }
 
     try {
-      await apiClient.delete(`/api/campaigns/${campaignId}/locations/${locationId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/locations/${locationId}`);
       setSnackbar({
         open: true,
         message: "Location deleted successfully",

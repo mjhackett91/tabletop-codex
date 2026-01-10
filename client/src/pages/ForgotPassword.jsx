@@ -19,7 +19,7 @@ export default function ForgotPassword() {
     setLoading(true);
 
     try {
-      const response = await apiClient.post("/api/auth/forgot-password", { email });
+      const response = await apiClient.post("/auth/forgot-password", { email });
       
       setSuccess(response.message || "If an account with that email exists, a password reset link has been sent.");
       

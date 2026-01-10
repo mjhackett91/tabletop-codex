@@ -5,7 +5,7 @@
  * In dev mode, uses relative URLs that go through Vite proxy
  */
 const isDev = import.meta.env.DEV;
-const baseURL = isDev ? "" : (import.meta.env.VITE_API_URL || "http://localhost:5000/api");
+const baseURL = isDev ? "" : (import.meta.env.VITE_API_URL || "");
 
 /**
  * Base fetch wrapper with error handling

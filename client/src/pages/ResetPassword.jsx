@@ -47,7 +47,7 @@ export default function ResetPassword() {
     setLoading(true);
 
     try {
-      const response = await apiClient.post("/api/auth/reset-password", {
+      const response = await apiClient.post("/auth/reset-password", {
         token,
         password: formData.password
       });

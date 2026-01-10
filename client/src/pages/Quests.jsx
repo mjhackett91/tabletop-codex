@@ -139,7 +139,7 @@ export default function Quests() {
     }
 
     try {
-      const data = await apiClient.get(`/api/campaigns/${campaignId}/quests`);
+      const data = await apiClient.get(`/campaigns/${campaignId}/quests`);
       setQuests(data);
     } catch (error) {
       console.error("Failed to fetch quests:", error);
@@ -156,7 +156,7 @@ export default function Quests() {
   // Fetch user role
   const fetchUserRole = async () => {
     try {
-      const roleData = await apiClient.get(`/api/campaigns/${campaignId}/my-role`);
+      const roleData = await apiClient.get(`/campaigns/${campaignId}/my-role`);
       setUserRole(roleData?.role || null);
     } catch (error) {
       console.error("Failed to fetch user role:", error);
@@ -194,7 +194,7 @@ export default function Quests() {
     if (quest) {
       // Fetch full quest with relationships
       try {
-        const fullQuest = await apiClient.get(`/api/campaigns/${campaignId}/quests/${quest.id}`);
+        const fullQuest = await apiClient.get(`/campaigns/${campaignId}/quests/${quest.id}`);
         setEditingQuest(fullQuest);
         setFormData({
           title: fullQuest.title || "",
@@ -284,7 +284,7 @@ export default function Quests() {
 
       let questId;
       if (editingQuest) {
-        await apiClient.put(`/api/campaigns/${campaignId}/quests/${editingQuest.id}`, payload);
+        await apiClient.put(`/campaigns/${campaignId}/quests/${editingQuest.id}`, payload);
         questId = editingQuest.id;
         setSnackbar({
           open: true,
@@ -292,7 +292,7 @@ export default function Quests() {
           severity: "success"
         });
       } else {
-        const result = await apiClient.post(`/api/campaigns/${campaignId}/quests`, payload);
+        const result = await apiClient.post(`/campaigns/${campaignId}/quests`, payload);
         questId = result.id;
         setSnackbar({
           open: true,
@@ -305,7 +305,7 @@ export default function Quests() {
       if (questId) {
         try {
           await apiClient.post(
-            `/api/campaigns/${campaignId}/entities/quest/${questId}/tags`,
+            `/campaigns/${campaignId}/entities/quest/${questId}/tags`,
             { tagIds: selectedTagIds }
           );
         } catch (error) {
@@ -331,7 +331,7 @@ export default function Quests() {
     }
 
     try {
-      await apiClient.delete(`/api/campaigns/${campaignId}/quests/${questId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/quests/${questId}`);
       setSnackbar({
         open: true,
         message: "Quest deleted successfully",
@@ -416,31 +416,31 @@ export default function Quests() {
       console.log("Starting to fetch entities for campaign:", campaignId);
       
       const [playerChars, npcs, antagonists, locations, factions, worldInfo, quests] = await Promise.all([
-        apiClient.get(`/api/campaigns/${campaignId}/characters?type=player`).catch((e) => { 
+        apiClient.get(`/campaigns/${campaignId}/characters?type=player`).catch((e) => { 
           console.error("❌ Failed to fetch player characters:", e.message, e); 
           return []; 
         }),
-        apiClient.get(`/api/campaigns/${campaignId}/characters?type=npc`).catch((e) => { 
+        apiClient.get(`/campaigns/${campaignId}/characters?type=npc`).catch((e) => { 
           console.error("❌ Failed to fetch NPCs:", e.message, e); 
           return []; 
         }),
-        apiClient.get(`/api/campaigns/${campaignId}/characters?type=antagonist`).catch((e) => { 
+        apiClient.get(`/campaigns/${campaignId}/characters?type=antagonist`).catch((e) => { 
           console.error("❌ Failed to fetch antagonists:", e.message, e); 
           return []; 
         }),
-        apiClient.get(`/api/campaigns/${campaignId}/locations`).catch((e) => { 
+        apiClient.get(`/campaigns/${campaignId}/locations`).catch((e) => { 
           console.error("❌ Failed to fetch locations:", e.message, e); 
           return []; 
         }),
-        apiClient.get(`/api/campaigns/${campaignId}/factions`).catch((e) => { 
+        apiClient.get(`/campaigns/${campaignId}/factions`).catch((e) => { 
           console.error("❌ Failed to fetch factions:", e.message, e); 
           return []; 
         }),
-        apiClient.get(`/api/campaigns/${campaignId}/world-info`).catch((e) => { 
+        apiClient.get(`/campaigns/${campaignId}/world-info`).catch((e) => { 
           console.error("❌ Failed to fetch world info:", e.message, e); 
           return []; 
         }),
-        apiClient.get(`/api/campaigns/${campaignId}/quests`).catch((e) => { 
+        apiClient.get(`/campaigns/${campaignId}/quests`).catch((e) => { 
           console.error("❌ Failed to fetch quests:", e.message, e); 
           return []; 
         })
@@ -524,7 +524,7 @@ export default function Quests() {
     if (editingQuest && linkId) {
       // Delete from backend
       try {
-        await apiClient.delete(`/api/campaigns/${campaignId}/quests/${editingQuest.id}/links/${linkId}`);
+        await apiClient.delete(`/campaigns/${campaignId}/quests/${editingQuest.id}/links/${linkId}`);
         setLinks(links.filter((_, i) => i !== index));
         setSnackbar({
           open: true,

@@ -127,7 +127,7 @@ export default function Creatures() {
       if (filterType) params.append("creatureType", filterType);
       if (filterCR) params.append("challengeRating", filterCR);
 
-      const data = await apiClient.get(`/api/campaigns/${campaignId}/creatures?${params.toString()}`);
+      const data = await apiClient.get(`/campaigns/${campaignId}/creatures?${params.toString()}`);
       setCreatures(data);
     } catch (error) {
       console.error("Failed to fetch creatures:", error);
@@ -144,7 +144,7 @@ export default function Creatures() {
   // Fetch user role
   const fetchUserRole = async () => {
     try {
-      const roleData = await apiClient.get(`/api/campaigns/${campaignId}/my-role`);
+      const roleData = await apiClient.get(`/campaigns/${campaignId}/my-role`);
       setUserRole(roleData?.role || null);
     } catch (error) {
       console.error("Failed to fetch user role:", error);
@@ -181,7 +181,7 @@ export default function Creatures() {
   // Fetch tags for a creature
   const fetchCreatureTags = async (creatureId) => {
     try {
-      const tags = await apiClient.get(`/api/campaigns/${campaignId}/entities/creature/${creatureId}/tags`);
+      const tags = await apiClient.get(`/campaigns/${campaignId}/entities/creature/${creatureId}/tags`);
       setSelectedTagIds(tags.map(tag => tag.id));
     } catch (error) {
       console.error("Failed to fetch creature tags:", error);
@@ -347,7 +347,7 @@ export default function Creatures() {
 
       let creatureId;
       if (editingCreature) {
-        await apiClient.put(`/api/campaigns/${campaignId}/creatures/${editingCreature.id}`, payload);
+        await apiClient.put(`/campaigns/${campaignId}/creatures/${editingCreature.id}`, payload);
         creatureId = editingCreature.id;
         setSnackbar({
           open: true,
@@ -355,7 +355,7 @@ export default function Creatures() {
           severity: "success"
         });
       } else {
-        const result = await apiClient.post(`/api/campaigns/${campaignId}/creatures`, payload);
+        const result = await apiClient.post(`/campaigns/${campaignId}/creatures`, payload);
         creatureId = result.id;
         setSnackbar({
           open: true,
@@ -368,7 +368,7 @@ export default function Creatures() {
       if (creatureId) {
         try {
           await apiClient.post(
-            `/api/campaigns/${campaignId}/entities/creature/${creatureId}/tags`,
+            `/campaigns/${campaignId}/entities/creature/${creatureId}/tags`,
             { tagIds: selectedTagIds }
           );
         } catch (error) {
@@ -394,7 +394,7 @@ export default function Creatures() {
     }
 
     try {
-      await apiClient.delete(`/api/campaigns/${campaignId}/creatures/${creatureId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/creatures/${creatureId}`);
       setSnackbar({
         open: true,
         message: "Creature deleted successfully",

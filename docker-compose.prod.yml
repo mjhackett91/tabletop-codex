@@ -1,64 +1,23 @@
-# Production Docker Compose - For public deployment with reverse proxy
-# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-#
-# This file extends docker-compose.yml and makes the following production-safe changes:
-# - Frontend/Backend use expose (not ports) - accessed via reverse proxy
-# - Postgres is internal-only (already configured in base with expose only)
-# - Mailpit is internal-only (expose only, no ports)
-# - Includes Nginx Proxy Manager for reverse proxy management
-# - Only Nginx Proxy Manager exposes ports 80, 443, 81 to the host
-#
-# NOTE: Docker Compose v2 merges services. Setting ports: [] removes inherited
-# port mappings. Services remain accessible via docker internal network.
-
 services:
-  # Override frontend to remove port mapping (accessed via reverse proxy only)
   frontend:
-    ports: []  # Override base ports - now internal-only via expose
+    ports: []
     expose:
-      - "80"  # Expose for reverse proxy access on docker network
+      - "80"
 
-  # Override backend to remove port mapping (accessed via reverse proxy only)
   backend:
-    ports: []  # Override base ports - now internal-only via expose
+    ports: []
     expose:
-      - "5000"  # Expose for reverse proxy access on docker network
+      - "5000"
 
-  # Override mailpit to remove port mappings (internal-only, accessed via reverse proxy if needed)
   mailpit:
-    ports: []  # Override base ports - now internal-only via expose
+    ports: []
     expose:
-      - "1025"  # SMTP port (internal use only)
-      - "8025"  # Web UI port (optional: access via reverse proxy with authentication)
+      - "1025"
+      - "8025"
 
-  # Disable the basic nginx service (replaced by Nginx Proxy Manager)
   nginx:
     profiles:
-      - disabled  # Don't start when using production compose
-
-  # Nginx Proxy Manager - Reverse proxy for HTTPS/public access
-  npm:
-    image: jc21/nginx-proxy-manager:latest
-    container_name: ttc-npm
-    restart: unless-stopped
-    ports:
-      - "${NPM_HTTP_PORT:-80}:80"    # HTTP port (for Let's Encrypt challenge)
-      - "${NPM_HTTPS_PORT:-443}:443"  # HTTPS port (main access)
-      - "${NPM_ADMIN_PORT:-81}:81"    # Admin UI port (internal access only)
-    volumes:
-      - ./data/npm/data:/data
-      - ./data/npm/letsencrypt:/etc/letsencrypt
-    environment:
-      # Optional: Set these in .env for custom configuration
-      - DB_SQLITE_FILE=/data/database.sqlite
-      - DISABLE_IPV6=${NPM_DISABLE_IPV6:-false}
-    networks:
-      - default  # Use the default network to access frontend/backend services
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:81/api"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - disabled
 
 networks:
   default:
