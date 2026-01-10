@@ -375,6 +375,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 ### Setting Up Nginx Proxy Manager
 
+**⚠️ Important:** When configuring upstream servers in Nginx Proxy Manager, always use Docker container names (e.g., `ttc-frontend`, `ttc-backend`) rather than IP addresses or `localhost`. This ensures proper service discovery within the Docker network and works correctly with dynamic IP assignment.
+
 1. **Access NPM Admin UI:**
    - Navigate to `http://YOUR_NAS_IP:81`
    - Default login: `admin@example.com` / `changeme`
@@ -390,7 +392,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
    - Go to "Proxy Hosts" tab → "Add Proxy Host"
    - **Details:**
      - Domain Names: `app.yourdomain.com` (or `yourdomain.com`)
-     - Forward Hostname/IP: `ttc-frontend` (container name)
+     - **Forward Hostname/IP:** `ttc-frontend` ⚠️ **Use container name, not IP address or localhost**
      - Forward Port: `80`
      - Block Common Exploits: ✅ Enabled
      - Websockets Support: ✅ Enabled
@@ -403,7 +405,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
    - "Add Proxy Host"
    - **Details:**
      - Domain Names: `api.yourdomain.com`
-     - Forward Hostname/IP: `ttc-backend` (container name)
+     - **Forward Hostname/IP:** `ttc-backend` ⚠️ **Use container name, not IP address or localhost**
      - Forward Port: `5000`
      - Block Common Exploits: ✅ Enabled
      - Websockets Support: ✅ Enabled (if needed)
@@ -414,9 +416,18 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 5. **Optional: Mailpit Access (via Reverse Proxy):**
    - Only if you want to access Mailpit UI from the internet
-   - Create proxy host for `mailpit.yourdomain.com` → `ttc-mailpit:8025`
+   - Create proxy host for `mailpit.yourdomain.com`
+   - **Forward Hostname/IP:** `ttc-mailpit` (container name)
+   - **Forward Port:** `8025`
    - **Add Authentication:** Use NPM's "Access Lists" to require authentication
    - **OR** use IP whitelisting to restrict to your IP only
+
+**Why Container Names?**
+- Services on the same Docker network can communicate via container names
+- Container names are stable and don't change like IP addresses
+- No need to discover or hardcode container IPs
+- Works seamlessly with Docker's internal DNS
+- When NPM and your app containers are on the same network (default), use: `ttc-frontend:80`, `ttc-backend:5000`, `ttc-mailpit:8025`
 
 ### Environment Variables for Production
 

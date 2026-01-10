@@ -27,13 +27,11 @@ services:
       context: ./server
       dockerfile: Dockerfile
     container_name: ttc-backend
-    ports: []
     expose:
       - "5000"
     environment:
       - PORT=5000
       - NODE_ENV=${NODE_ENV:-production}
-      - DB_PATH=/app/data/codex.db
       - DATABASE_URL=postgresql://${POSTGRES_USER:-ttc_user}:${POSTGRES_PASSWORD:-ttc_password_change_in_production}@postgres:5432/${POSTGRES_DB:-ttc}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -69,7 +67,6 @@ services:
       args:
         - VITE_API_URL=${VITE_API_URL:-http://backend:5000/api}
     container_name: ttc-frontend
-    ports: []
     expose:
       - "80"
     depends_on:
@@ -84,7 +81,6 @@ services:
     image: axllent/mailpit:latest
     container_name: ttc-mailpit
     # For local/development: expose ports. For production, use docker-compose.prod.yml which uses expose
-    ports: []
     expose:
       - "1025"
       - "8025"

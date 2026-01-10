@@ -1,16 +1,13 @@
 services:
   frontend:
-    ports: []
     expose:
       - "80"
 
   backend:
-    ports: []
     expose:
       - "5000"
 
   mailpit:
-    ports: []
     expose:
       - "1025"
       - "8025"
