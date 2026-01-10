@@ -8,5 +8,8 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:5050'
     }
+  },
+  resolve: {
+    dedupe: ['react', 'react-dom', '@emotion/react']
   }
 })

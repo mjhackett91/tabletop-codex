@@ -1,0 +1,169 @@
+// client/src/services/apiClient.js
+/**
+ * API Client for Table Top Codex
+ * Always uses relative URLs that go through the reverse proxy (Nginx Proxy Manager)
+ * This ensures consistent routing in both dev and production environments
+ */
+/**
+ * Base fetch wrapper with error handling
+ * All endpoints are relative and will be handled by the reverse proxy
+ * Automatically prepends /api to endpoints that don't already include it
+ */
+async function apiRequest(endpoint, options = {}) {
+  // Skip /api prefix for absolute URLs
+  let url;
+  if (endpoint.startsWith("http")) {
+    url = endpoint;
+  } else {
+    // Ensure endpoint starts with /
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    // Prepend /api if not already present
+    url = cleanEndpoint.startsWith("/api/") ? cleanEndpoint : `/api${cleanEndpoint}`;
+  }
+  
+  const config = {
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+    ...options,
+  };
+
+  // Add auth token if available
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await fetch(url, config);
+    
+    if (!response.ok) {
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { error: response.statusText };
+      }
+      
+      const errorMessage = errorData.error || errorData.details || `HTTP ${response.status}: ${response.statusText}`;
+      const fullError = errorData.details ? `${errorMessage} (${errorData.details})` : errorMessage;
+      
+      // Enhance error messages for common auth errors
+      if (response.status === 401) {
+        throw new Error("Authentication required. Please login.");
+      } else if (response.status === 403) {
+        // Use the actual error message from the server, don't override it
+        throw new Error(errorMessage || "Access denied");
+      } else {
+        throw new Error(fullError);
+      }
+    }
+
+    // Handle 204 No Content
+    if (response.status === 204) {
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("API request failed:", error);
+    // Re-throw the error so components can handle it
+    throw error;
+  }
+}
+
+/**
+ * Fetch binary data (e.g., images) as Blob
+ * @param {string} endpoint - Relative API endpoint
+ * @returns {Promise<Blob>} - Blob object
+ */
+async function apiRequestBlob(endpoint) {
+  // Skip /api prefix for absolute URLs
+  let url;
+  if (endpoint.startsWith("http")) {
+    url = endpoint;
+  } else {
+    // Ensure endpoint starts with /
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    // Prepend /api if not already present
+    url = cleanEndpoint.startsWith("/api/") ? cleanEndpoint : `/api${cleanEndpoint}`;
+  }
+  
+  const headers = {};
+  
+  // Add auth token if available
+  const token = localStorage.getItem("token");
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await fetch(url, { headers });
+    
+    if (!response.ok) {
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { error: response.statusText };
+      }
+      
+      const errorMessage = errorData.error || errorData.details || `HTTP ${response.status}: ${response.statusText}`;
+      throw new Error(errorMessage);
+    }
+
+    return await response.blob();
+  } catch (error) {
+    console.error("API blob request failed:", error);
+    throw error;
+  }
+}
+
+export const apiClient = {
+  get: (endpoint) => apiRequest(endpoint, { method: "GET" }),
+  /**
+   * Get binary data as Blob (e.g., for images)
+   * @param {string} endpoint - Relative API endpoint
+   * @returns {Promise<Blob>} - Blob object
+   */
+  getBlob: (endpoint) => apiRequestBlob(endpoint),
+  post: (endpoint, data) => {
+    // If data is FormData, don't stringify and don't set Content-Type
+    if (data instanceof FormData) {
+      // Skip /api prefix for absolute URLs
+      let url;
+      if (endpoint.startsWith("http")) {
+        url = endpoint;
+      } else {
+        // Ensure endpoint starts with /
+        const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+        // Prepend /api if not already present
+        url = cleanEndpoint.startsWith("/api/") ? cleanEndpoint : `/api${cleanEndpoint}`;
+      }
+      
+      const token = localStorage.getItem("token");
+      const headers = {};
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      
+      return fetch(url, {
+        method: "POST",
+        headers,
+        body: data
+      }).then(async (response) => {
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: response.statusText }));
+          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+      });
+    }
+    return apiRequest(endpoint, { method: "POST", body: JSON.stringify(data) });
+  },
+  put: (endpoint, data) => apiRequest(endpoint, { method: "PUT", body: JSON.stringify(data) }),
+  delete: (endpoint) => apiRequest(endpoint, { method: "DELETE" }),
+};
+
+export default apiClient;

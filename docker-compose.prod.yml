@@ -1,0 +1,22 @@
+services:
+  frontend:
+    expose:
+      - "80"
+
+  backend:
+    expose:
+      - "5000"
+
+  mailpit:
+    expose:
+      - "1025"
+      - "8025"
+
+  nginx:
+    profiles:
+      - disabled
+
+networks:
+  default:
+    name: ttc-network
+    driver: bridge

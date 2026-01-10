@@ -1,50 +1,37 @@
-// server/routes/campaigns.js
+// server/routes/campaigns.js - User-scoped campaigns CRUD
 import express from "express";
-import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { get, all, query } from "../db-pg.js";
+import { authenticateToken } from "../middleware/auth.js";
+import { verifyCampaignOwnership } from "../utils/campaignOwnership.js";
 
 const router = express.Router();
 
-/**
- * Resolve database path
- * Default: one level above /server → /db/ttc.db
- * Create folder if it does not exist.
- */
-const dbPath = process.env.DB_PATH || path.join(__dirname, "../db/ttc.db");
-const dbDir = path.dirname(dbPath);
+// All campaign routes require authentication
+router.use(authenticateToken);
 
-if (!fs.existsSync(dbDir)) {
-  console.log("Creating database directory:", dbDir);
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
-console.log("Resolved DB path:", dbPath);
-
-// Initialize database
-const db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
-
-// Create campaigns table if it doesn't exist
-db.exec(`
-  CREATE TABLE IF NOT EXISTS campaigns (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
-`);
-
-/** GET /api/campaigns - List all campaigns */
-router.get("/", (req, res) => {
+/** GET /api/campaigns - List user's campaigns (owned and participated) */
+router.get("/", async (req, res) => {
   try {
-    const campaigns = db
-      .prepare("SELECT * FROM campaigns ORDER BY created_at DESC")
-      .all();
+    const userId = req.user.id;
+    
+    // Get campaigns where user is owner OR participant
+    const campaigns = await all(`
+      SELECT DISTINCT
+        c.*,
+        CASE 
+          WHEN c.user_id = $1 THEN 'dm'
+          ELSE cp.role
+        END as user_role,
+        CASE 
+          WHEN c.user_id = $1 THEN true
+          ELSE false
+        END as is_owner
+      FROM campaigns c
+      LEFT JOIN campaign_participants cp ON c.id = cp.campaign_id AND cp.user_id = $1
+      WHERE c.user_id = $1 OR cp.user_id = $1
+      ORDER BY is_owner DESC, c.created_at DESC
+    `, [userId]);
+    
     res.json(campaigns);
   } catch (error) {
     console.error("Error fetching campaigns:", error);
@@ -53,21 +40,46 @@ router.get("/", (req, res) => {
 });
 
 /** POST /api/campaigns - Create new campaign */
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   try {
+    const userId = req.user.id;
     const { name, description } = req.body;
+    
     if (!name || !name.trim()) {
       return res.status(400).json({ error: "Campaign name is required" });
     }
 
-    const stmt = db.prepare(
-      "INSERT INTO campaigns (name, description) VALUES (?, ?)"
+    const result = await query(
+      "INSERT INTO campaigns (user_id, name, description) VALUES ($1, $2, $3) RETURNING id",
+      [userId, name.trim(), description?.trim() || null]
     );
-    const result = stmt.run(name.trim(), description?.trim() || null);
+    const campaignId = result.rows[0].id;
 
-    const newCampaign = db
-      .prepare("SELECT * FROM campaigns WHERE id = ?")
-      .get(result.lastInsertRowid);
+    // Create pre-made tags for the new campaign
+    const premadeTags = [
+      { name: "Important", color: "#FF5733", is_premade: true },
+      { name: "NPC", color: "#33FF57", is_premade: true },
+      { name: "Location", color: "#3357FF", is_premade: true },
+      { name: "Quest", color: "#FF33F5", is_premade: true },
+      { name: "Lore", color: "#D4AF37", is_premade: true }, // Changed from bright yellow to gold for readability
+      { name: "Session", color: "#FF8C33", is_premade: true },
+      { name: "Player", color: "#33FFF5", is_premade: true },
+      { name: "Villain", color: "#8C33FF", is_premade: true },
+    ];
+
+    for (const tag of premadeTags) {
+      try {
+        await query(
+          "INSERT INTO tags (campaign_id, name, color, is_premade) VALUES ($1, $2, $3, $4) ON CONFLICT (campaign_id, name) DO NOTHING",
+          [campaignId, tag.name, tag.color, tag.is_premade ? 1 : 0]
+        );
+      } catch (err) {
+        // Tag might already exist, skip
+        console.log(`Skipping premade tag ${tag.name}: ${err.message}`);
+      }
+    }
+
+    const newCampaign = await get("SELECT * FROM campaigns WHERE id = $1", [campaignId]);
     res.status(201).json(newCampaign);
   } catch (error) {
     console.error("Error creating campaign:", error);
@@ -76,26 +88,31 @@ router.post("/", (req, res) => {
 });
 
 /** PUT /api/campaigns/:id - Update campaign */
-router.put("/:id", (req, res) => {
+router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
     const { name, description } = req.body;
+    
     if (!name || !name.trim()) {
       return res.status(400).json({ error: "Campaign name is required" });
     }
 
-    const stmt = db.prepare(
-      "UPDATE campaigns SET name = ?, description = ? WHERE id = ?"
-    );
-    const result = stmt.run(name.trim(), description?.trim() || null, id);
+    // Verify ownership
+    if (!(await verifyCampaignOwnership(id, userId))) {
+      return res.status(403).json({ error: "Campaign not found or access denied" });
+    }
 
-    if (result.changes === 0) {
+    const result = await query(
+      "UPDATE campaigns SET name = $1, description = $2 WHERE id = $3 AND user_id = $4",
+      [name.trim(), description?.trim() || null, id, userId]
+    );
+
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Campaign not found" });
     }
 
-    const updatedCampaign = db
-      .prepare("SELECT * FROM campaigns WHERE id = ?")
-      .get(id);
+    const updatedCampaign = await get("SELECT * FROM campaigns WHERE id = $1", [id]);
     res.json(updatedCampaign);
   } catch (error) {
     console.error("Error updating campaign:", error);
@@ -104,13 +121,19 @@ router.put("/:id", (req, res) => {
 });
 
 /** DELETE /api/campaigns/:id - Delete campaign */
-router.delete("/:id", (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const stmt = db.prepare("DELETE FROM campaigns WHERE id = ?");
-    const result = stmt.run(id);
+    const userId = req.user.id;
 
-    if (result.changes === 0) {
+    // Verify ownership
+    if (!(await verifyCampaignOwnership(id, userId))) {
+      return res.status(403).json({ error: "Campaign not found or access denied" });
+    }
+
+    const result = await query("DELETE FROM campaigns WHERE id = $1 AND user_id = $2", [id, userId]);
+
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Campaign not found" });
     }
 

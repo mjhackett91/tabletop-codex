@@ -1,43 +1,45 @@
-import { AppBar, Toolbar, Typography, Container, Button, Box } from "@mui/material";
-import { Link, useLocation } from "react-router-dom";
+// client/src/components/Layout.jsx - Main layout wrapper
+import { Box, Container } from "@mui/material";
+import { useLocation } from "react-router-dom";
+import TopAppBar from "./TopAppBar";
+import Breadcrumbs from "./Breadcrumbs";
 
 export default function Layout({ children }) {
   const location = useLocation();
+  
+  // Public pages (no top bar, no breadcrumbs)
+  const publicPages = ["/", "/login", "/register"];
+  const isPublicPage = publicPages.includes(location.pathname);
+  
+  // Check if user is logged in
+  const isLoggedIn = !!localStorage.getItem("token");
 
   return (
-    <>
-      <AppBar position="static" color="transparent" elevation={0}>
-        <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1, color: "primary.main" }}>
-            Table Top Codex
-          </Typography>
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Button
-              component={Link}
-              to="/"
-              color="inherit"
-              sx={{ 
-                color: location.pathname === "/" ? "primary.main" : "text.secondary",
-                fontWeight: location.pathname === "/" ? 600 : 400
-              }}
-            >
-              Home
-            </Button>
-            <Button
-              component={Link}
-              to="/campaigns"
-              color="inherit"
-              sx={{ 
-                color: location.pathname === "/campaigns" ? "primary.main" : "text.secondary",
-                fontWeight: location.pathname === "/campaigns" ? 600 : 400
-              }}
-            >
-              Campaigns
-            </Button>
-          </Box>
-        </Toolbar>
-      </AppBar>
-      <Container sx={{ mt: 4 }}>{children}</Container>
-    </>
+    <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column", overflowX: "hidden" }}>
+      {/* Show TopAppBar only for logged-in users on non-public pages */}
+      {isLoggedIn && !isPublicPage && <TopAppBar />}
+      
+      {/* Main content */}
+      <Box sx={{ flexGrow: 1, overflowX: "hidden", width: "100%" }}>
+        {isPublicPage ? (
+          // Full-width for hero page
+          children
+        ) : (
+          // Container with breadcrumbs for app pages - responsive maxWidth
+          <Container 
+            maxWidth={false}
+            sx={{ 
+              py: { xs: 2, sm: 3 },
+              px: { xs: 2, sm: 3, md: 4 },
+              maxWidth: { xs: "100%", sm: "100%", md: "960px", lg: "1280px", xl: "1536px" },
+              width: "100%"
+            }}
+          >
+            <Breadcrumbs />
+            {children}
+          </Container>
+        )}
+      </Box>
+    </Box>
   );
 }
