@@ -308,18 +308,29 @@ export default function Locations() {
   );
 
   return (
-    <Box>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
+    <Box sx={{ width: "100%", maxWidth: "100%", overflowX: "hidden" }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1, sm: 2 }, mb: { xs: 2, sm: 3 }, flexWrap: "wrap" }}>
         <BackButton variant="icon" />
-        <CampaignNav campaignId={campaignId} />
+        <Box sx={{ flex: 1, minWidth: { xs: "100%", sm: "auto" } }}>
+          <CampaignNav campaignId={campaignId} />
+        </Box>
       </Box>
 
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <LocationOnIcon sx={{ fontSize: 40, color: "primary.main" }} />
+      <Box sx={{ 
+        display: "flex", 
+        flexDirection: { xs: "column", sm: "row" },
+        justifyContent: "space-between", 
+        alignItems: { xs: "flex-start", sm: "center" }, 
+        mb: { xs: 2, sm: 3 },
+        gap: { xs: 1, sm: 0 }
+      }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1.5, sm: 2 } }}>
+          <LocationOnIcon sx={{ fontSize: { xs: 32, sm: 40 }, color: "primary.main", flexShrink: 0 }} />
           <Box>
-            <Typography variant="h4">Locations</Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="h4" sx={{ fontSize: { xs: "1.5rem", sm: "2rem" } }}>
+              Locations
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>
               Manage locations, cities, dungeons, and other places in your campaign
             </Typography>
           </Box>
@@ -329,7 +340,7 @@ export default function Locations() {
       <Accordion 
         defaultExpanded 
         sx={{ 
-          mb: 3, 
+          mb: { xs: 2, sm: 3 }, 
           bgcolor: "background.paper", 
           border: `1px solid`, 
           borderColor: "primary.main",
@@ -371,17 +382,25 @@ export default function Locations() {
         </AccordionDetails>
       </Accordion>
 
-      <TableContainer component={Paper} sx={{ backgroundColor: "background.paper" }}>
-        <Table>
+      <TableContainer 
+        component={Paper} 
+        sx={{ 
+          backgroundColor: "background.paper",
+          maxHeight: { xs: "calc(100vh - 300px)", sm: "calc(100vh - 350px)" },
+          overflowX: "auto",
+          overflowY: "auto"
+        }}
+      >
+        <Table stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Tags</TableCell>
-              <TableCell>Parent Location</TableCell>
-              <TableCell>Description</TableCell>
-              <TableCell>Created</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              <TableCell sx={{ minWidth: { xs: 150, sm: 180 } }}>Name</TableCell>
+              <TableCell sx={{ minWidth: 100, display: { xs: "none", md: "table-cell" } }}>Type</TableCell>
+              <TableCell sx={{ minWidth: 120, display: { xs: "none", lg: "table-cell" } }}>Tags</TableCell>
+              <TableCell sx={{ minWidth: 150, display: { xs: "none", lg: "table-cell" } }}>Parent Location</TableCell>
+              <TableCell sx={{ minWidth: 200, display: { xs: "none", sm: "table-cell" } }}>Description</TableCell>
+              <TableCell sx={{ minWidth: 100, display: { xs: "none", md: "table-cell" } }}>Created</TableCell>
+              <TableCell align="right" sx={{ minWidth: 100 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -417,12 +436,12 @@ export default function Locations() {
                       {location.name}
                     </Typography>
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                     {location.location_type && (
                       <Chip label={location.location_type} size="small" variant="outlined" />
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
                     <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
                       {location.tags && location.tags.length > 0 ? (
                         location.tags.map((tag) => (
@@ -443,7 +462,7 @@ export default function Locations() {
                       )}
                     </Box>
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
                     {location.parent_location_name ? (
                       <Chip 
                         label={location.parent_location_name} 
@@ -455,7 +474,7 @@ export default function Locations() {
                       <Typography color="text.secondary" variant="body2">—</Typography>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
                     {(() => {
                       // Check if description has actual content (not just empty HTML tags)
                       const hasContent = location.description && 
@@ -484,7 +503,7 @@ export default function Locations() {
                       );
                     })()}
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                     <Box>
                       <Typography color="text.secondary" variant="body2">
                         {formatDate(location.created_at)}
@@ -496,7 +515,7 @@ export default function Locations() {
                       )}
                     </Box>
                   </TableCell>
-                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()} sx={{ minWidth: 100 }}>
                     <IconButton
                       onClick={() => handleOpenDialog(location)}
                       color="primary"
@@ -522,7 +541,12 @@ export default function Locations() {
       <Fab
         color="primary"
         aria-label="add location"
-        sx={{ position: "fixed", bottom: 16, right: 16 }}
+        sx={{ 
+          position: "fixed", 
+          bottom: { xs: 16, sm: 24 }, 
+          right: { xs: 16, sm: 24 },
+          zIndex: 1000
+        }}
         onClick={() => handleOpenDialog()}
       >
         <AddIcon />
@@ -533,9 +557,14 @@ export default function Locations() {
         onClose={handleCloseDialog} 
         maxWidth="md" 
         fullWidth
+        PaperProps={{
+          sx: { maxHeight: "90vh", m: { xs: 1, sm: 2 } }
+        }}
       >
-        <DialogTitle>
-          {editingLocation ? "Edit Location" : "New Location"}
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6" sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}>
+            {editingLocation ? "Edit Location" : "New Location"}
+          </Typography>
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
             {editingLocation ? "Update" : "Create"} a location for this campaign
             {editingLocation && editingLocation.created_by_username && (
@@ -548,14 +577,14 @@ export default function Locations() {
             )}
           </Typography>
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ overflowY: "auto", px: { xs: 2, sm: 3 } }}>
           <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ mb: 2 }}>
             <Tab label="Details" />
             <Tab label="Images" />
           </Tabs>
 
           {dialogTab === 0 && (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: { xs: 1, sm: 2 } }}>
             <TextField
               autoFocus
               label="Location Name"
@@ -564,9 +593,10 @@ export default function Locations() {
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
+              size="small"
             />
 
-            <FormControl fullWidth>
+            <FormControl fullWidth size="small">
               <InputLabel>Location Type</InputLabel>
               <Select
                 value={formData.location_type}
@@ -580,7 +610,7 @@ export default function Locations() {
               </Select>
             </FormControl>
 
-            <FormControl fullWidth>
+            <FormControl fullWidth size="small">
               <InputLabel>Parent Location (Optional)</InputLabel>
               <Select
                 value={formData.parent_location_id || ""}
@@ -598,7 +628,7 @@ export default function Locations() {
             </FormControl>
 
             <Box>
-              <Typography variant="subtitle2" gutterBottom>
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
                 Description
               </Typography>
               <RichTextEditor
@@ -610,7 +640,7 @@ export default function Locations() {
             </Box>
 
             <Box>
-              <Typography variant="subtitle2" gutterBottom>
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
                 Tags
               </Typography>
               <TagSelector
@@ -625,11 +655,12 @@ export default function Locations() {
 
             <Box>
               <FormControl component="fieldset">
-                <FormLabel component="legend">Visibility</FormLabel>
+                <FormLabel component="legend" sx={{ fontWeight: 600 }}>Visibility</FormLabel>
                 <RadioGroup
                   row
                   value={formData.visibility}
                   onChange={(e) => setFormData({ ...formData, visibility: e.target.value })}
+                  sx={{ flexWrap: { xs: "wrap", sm: "nowrap" } }}
                 >
                   <FormControlLabel 
                     value="dm-only" 
@@ -676,7 +707,7 @@ export default function Locations() {
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: { xs: 1.5, sm: 2 }, flexWrap: { xs: "wrap", sm: "nowrap" }, gap: { xs: 1, sm: 0 } }}>
           <Button onClick={handleCloseDialog}>Cancel</Button>
           <Button 
             onClick={handleSubmit} 

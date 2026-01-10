@@ -810,22 +810,26 @@ export default function Sessions() {
         maxWidth="lg" 
         fullWidth
         PaperProps={{
-          sx: { height: "90vh" }
+          sx: { 
+            height: { xs: "95vh", sm: "90vh" },
+            m: { xs: 1, sm: 2 },
+            maxHeight: "95vh"
+          }
         }}
       >
-        <DialogTitle sx={{ pb: 1 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
+        <DialogTitle sx={{ pb: 1, px: { xs: 2, sm: 3 } }}>
+          <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, justifyContent: "space-between", alignItems: { xs: "flex-start", sm: "flex-start" }, gap: 1 }}>
+            <Typography variant="h6" sx={{ fontSize: { xs: "1rem", sm: "1.1rem" } }}>
               {editingSession ? "Edit Session" : "New Session"}
             </Typography>
             {editingSession && editingSession.created_by_username && (
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem", mt: 0.5 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
                 by {editingSession.created_by_username} • {formatDate(editingSession.created_at)}
               </Typography>
             )}
           </Box>
         </DialogTitle>
-        <DialogContent dividers sx={{ p: 0, display: "flex", flexDirection: "column", overflow: "hidden", height: "calc(90vh - 120px)" }}>
+        <DialogContent dividers sx={{ p: 0, display: "flex", flexDirection: "column", overflow: "hidden", height: { xs: "calc(95vh - 140px)", sm: "calc(90vh - 120px)" } }}>
           <Tabs value={dialogTab} onChange={(e, newValue) => setDialogTab(newValue)} sx={{ borderBottom: 1, borderColor: "divider", flexShrink: 0 }}>
             <Tab label="Session Notes" />
             <Tab label="Images" />

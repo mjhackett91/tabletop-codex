@@ -15,18 +15,26 @@ export default function Layout({ children }) {
   const isLoggedIn = !!localStorage.getItem("token");
 
   return (
-    <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+    <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column", overflowX: "hidden" }}>
       {/* Show TopAppBar only for logged-in users on non-public pages */}
       {isLoggedIn && !isPublicPage && <TopAppBar />}
       
       {/* Main content */}
-      <Box sx={{ flexGrow: 1 }}>
+      <Box sx={{ flexGrow: 1, overflowX: "hidden", width: "100%" }}>
         {isPublicPage ? (
           // Full-width for hero page
           children
         ) : (
-          // Container with breadcrumbs for app pages
-          <Container maxWidth="xl" sx={{ py: 3 }}>
+          // Container with breadcrumbs for app pages - responsive maxWidth
+          <Container 
+            maxWidth={false}
+            sx={{ 
+              py: { xs: 2, sm: 3 },
+              px: { xs: 2, sm: 3, md: 4 },
+              maxWidth: { xs: "100%", sm: "100%", md: "960px", lg: "1280px", xl: "1536px" },
+              width: "100%"
+            }}
+          >
             <Breadcrumbs />
             {children}
           </Container>

@@ -47,8 +47,8 @@ export default function TopAppBar() {
   };
 
   return (
-    <AppBar position="sticky" sx={{ bgcolor: "background.paper", color: "text.primary", boxShadow: 1 }}>
-      <Toolbar>
+    <AppBar position="sticky" sx={{ bgcolor: "background.paper", color: "text.primary", boxShadow: 1, zIndex: 1100 }}>
+      <Toolbar sx={{ px: { xs: 1, sm: 2, md: 3 }, minHeight: { xs: 56, sm: 64 } }}>
         {/* App Name/Logo - Links to Dashboard */}
         <Typography
           variant="h6"
@@ -59,7 +59,8 @@ export default function TopAppBar() {
             color: "primary.main",
             textDecoration: "none",
             fontWeight: 700,
-            mr: 4,
+            mr: { xs: 2, sm: 3, md: 4 },
+            fontSize: { xs: "1rem", sm: "1.25rem" },
             "&:hover": {
               color: "primary.dark",
             },
@@ -69,7 +70,7 @@ export default function TopAppBar() {
         </Typography>
 
         {/* Navigation Links */}
-        <Box sx={{ display: "flex", gap: 1, flexGrow: 1 }}>
+        <Box sx={{ display: { xs: "none", sm: "flex" }, gap: 1, flexGrow: 1 }}>
           <Button
             component={Link}
             to="/dashboard"
@@ -80,6 +81,7 @@ export default function TopAppBar() {
               fontWeight: isActive("/dashboard") ? 600 : 400,
               "&:hover": {
                 color: "primary.main",
+                bgcolor: "action.hover"
               },
             }}
           >
@@ -88,21 +90,24 @@ export default function TopAppBar() {
         </Box>
 
         {/* User Menu */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1, sm: 2 }, ml: "auto" }}>
           {user && (
             <Chip
               label={user.username}
               size="small"
               color="primary"
               variant="outlined"
+              sx={{ display: { xs: "none", sm: "flex" } }}
             />
           )}
           <IconButton
             onClick={handleMenuOpen}
+            aria-label="user menu"
             sx={{
               color: "text.secondary",
               "&:hover": {
                 color: "primary.main",
+                bgcolor: "action.hover"
               },
             }}
           >

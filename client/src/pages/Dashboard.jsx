@@ -290,13 +290,22 @@ export default function Dashboard() {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <CampaignIcon sx={{ fontSize: 40, color: "primary.main" }} />
+    <Box sx={{ p: { xs: 2, sm: 3 }, width: "100%", maxWidth: "100%", overflowX: "hidden" }}>
+      <Box sx={{ 
+        display: "flex", 
+        flexDirection: { xs: "column", sm: "row" },
+        justifyContent: "space-between", 
+        alignItems: { xs: "flex-start", sm: "center" }, 
+        mb: { xs: 2, sm: 3 },
+        gap: { xs: 2, sm: 0 }
+      }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1.5, sm: 2 }, flex: 1 }}>
+          <CampaignIcon sx={{ fontSize: { xs: 32, sm: 40 }, color: "primary.main", flexShrink: 0 }} />
           <Box>
-            <Typography variant="h4">My Campaigns</Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="h4" sx={{ fontSize: { xs: "1.5rem", sm: "2rem" } }}>
+              My Campaigns
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>
               Manage your tabletop RPG campaigns
             </Typography>
           </Box>
@@ -305,30 +314,32 @@ export default function Dashboard() {
           label={`${campaigns.length} campaign${campaigns.length !== 1 ? "s" : ""}`}
           color="primary"
           variant="outlined"
+          sx={{ flexShrink: 0 }}
         />
       </Box>
 
       {campaigns.length === 0 ? (
-        <Card sx={{ p: 4, textAlign: "center" }}>
+        <Card sx={{ p: { xs: 3, sm: 4 }, textAlign: "center" }}>
           <CardContent>
-            <CampaignIcon sx={{ fontSize: 64, color: "text.secondary", mb: 2 }} />
+            <CampaignIcon sx={{ fontSize: { xs: 48, sm: 64 }, color: "text.secondary", mb: 2 }} />
             <Typography variant="h6" color="text.secondary" gutterBottom>
               No campaigns yet
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3, maxWidth: "600px", mx: "auto" }}>
               Create your first campaign to start organizing your tabletop RPG adventures!
             </Typography>
             <Button
               variant="contained"
               startIcon={<AddIcon />}
               onClick={() => handleOpenDialog()}
+              size="medium"
             >
               Create Campaign
             </Button>
           </CardContent>
         </Card>
       ) : (
-        <Grid container spacing={3}>
+        <Grid container spacing={{ xs: 2, sm: 3 }}>
           {campaigns.map((campaign) => (
             <Grid item xs={12} sm={6} md={4} key={campaign.id}>
               <Card
@@ -430,17 +441,30 @@ export default function Dashboard() {
       <Fab
         color="primary"
         aria-label="add campaign"
-        sx={{ position: "fixed", bottom: 16, right: 16 }}
+        sx={{ 
+          position: "fixed", 
+          bottom: { xs: 16, sm: 24 }, 
+          right: { xs: 16, sm: 24 },
+          zIndex: 1000
+        }}
         onClick={() => handleOpenDialog()}
       >
         <AddIcon />
       </Fab>
 
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={openDialog} 
+        onClose={handleCloseDialog} 
+        maxWidth="sm" 
+        fullWidth
+        PaperProps={{
+          sx: { maxHeight: "90vh" }
+        }}
+      >
         <DialogTitle>
           {editingCampaign ? "Edit Campaign" : "New Campaign"}
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ overflowY: "auto" }}>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
             <TextField
               autoFocus
@@ -482,11 +506,14 @@ export default function Dashboard() {
         onClose={handleCloseSharing} 
         maxWidth="sm" 
         fullWidth
+        PaperProps={{
+          sx: { maxHeight: "90vh" }
+        }}
       >
         <DialogTitle>
           Share Campaign: {sharingCampaign?.name}
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ overflowY: "auto" }}>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {/* Invite Section */}
             <Box>

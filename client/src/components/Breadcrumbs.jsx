@@ -86,10 +86,15 @@ export default function Breadcrumbs() {
   }
 
   return (
-    <Box sx={{ mb: 2, mt: 2 }}>
+    <Box sx={{ mb: { xs: 1.5, sm: 2 }, mt: { xs: 1, sm: 2 }, overflowX: "auto" }}>
       <MuiBreadcrumbs
         separator={<NavigateNextIcon fontSize="small" />}
         aria-label="breadcrumb navigation"
+        sx={{
+          "& .MuiBreadcrumbs-ol": {
+            flexWrap: { xs: "wrap", sm: "nowrap" }
+          }
+        }}
       >
         {breadcrumbs.map((crumb, index) => {
           const isLast = index === breadcrumbs.length - 1;

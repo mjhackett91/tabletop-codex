@@ -1,6 +1,36 @@
-/* Add TipTap styles */
+/* Global improvements for readability and accessibility */
+* {
+  box-sizing: border-box;
+}
+
+/* Prevent horizontal overflow */
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Improve text readability */
+.MuiTypography-body1,
+.MuiTypography-body2 {
+  line-height: 1.6;
+  max-width: 65ch; /* Optimal reading width */
+}
+
+/* Better focus visibility for accessibility */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* TipTap styles */
 .ProseMirror {
   outline: none;
+  max-width: 100%;
 }
 
 .ProseMirror p {

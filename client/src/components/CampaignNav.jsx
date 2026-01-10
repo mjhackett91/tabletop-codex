@@ -54,18 +54,24 @@ export default function CampaignNav({ campaignId }) {
   const basePath = `/campaigns/${campaignId}`;
 
   return (
-    <Paper sx={{ mb: 3, borderRadius: 2 }}>
-      <Tabs
-        value={currentTab}
-        variant="fullWidth"
-        sx={{
-          borderBottom: 1,
-          borderColor: "divider",
-          "& .MuiTab-root": {
-            minHeight: 64,
-          },
-        }}
-      >
+    <Paper sx={{ mb: { xs: 2, sm: 3 }, borderRadius: 2, overflow: "hidden" }}>
+      <Box sx={{ overflowX: "auto", overflowY: "hidden" }}>
+        <Tabs
+          value={currentTab}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          sx={{
+            borderBottom: 1,
+            borderColor: "divider",
+            minHeight: { xs: 48, sm: 64 },
+            "& .MuiTab-root": {
+              minHeight: { xs: 48, sm: 64 },
+              minWidth: { xs: 100, sm: 120 },
+              fontSize: { xs: "0.75rem", sm: "0.875rem" },
+            },
+          }}
+        >
         <LinkTab
           label="Characters"
           value="/characters"
@@ -130,6 +136,7 @@ export default function CampaignNav({ campaignId }) {
           iconPosition="start"
         />
       </Tabs>
+      </Box>
     </Paper>
   );
 }
