@@ -14,10 +14,19 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
 });
 
-// Test connection
-pool.on("connect", () => {
-  console.log("Connected to PostgreSQL database");
-});
+// Test connection (log once)
+let __loggedPgReady = false;
+(async () => {
+  try {
+    await pool.query("SELECT 1");
+    if (!__loggedPgReady) {
+      __loggedPgReady = true;
+      console.log("Connected to PostgreSQL database");
+    }
+  } catch (err) {
+    console.error("PostgreSQL initial connection check failed:", err?.message || err);
+  }
+})();
 
 pool.on("error", (err) => {
   console.error("Unexpected error on idle PostgreSQL client", err);
