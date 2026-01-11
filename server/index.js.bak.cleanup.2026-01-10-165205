@@ -48,6 +48,7 @@ function getClientIp(req) {
 const app = express();
 
 app.set("trust proxy", 1);
+app.set('trust proxy', 1); // Trust proxy headers (required for Cloudflare Tunnel, Nginx, etc.)
 
 
 // Security headers
@@ -146,7 +147,7 @@ const writeLimiter = rateLimit({
 const authLimiter = rateLimit({
   keyGenerator: (req) => getClientIp(req),
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max:    20, // Limit each IP to 5 requests per windowMs
+  max:   50, // Limit each IP to 5 requests per windowMs
   message: "Too many authentication attempts, please try again later.",
   standardHeaders: true,
   legacyHeaders: false,

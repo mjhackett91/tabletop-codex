@@ -108,8 +108,8 @@ export default function Creatures() {
     linkedEntities: { npcs: [], factions: [], locations: [], quests: [], sessions: [] }
   });
   const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState("");  const [filterCR, setFilterCR] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [filterCR, setFilterCR] = useState("");
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [selectedTagIds, setSelectedTagIds] = useState([]);
   const [userRole, setUserRole] = useState(null);
@@ -123,7 +123,7 @@ export default function Creatures() {
 
     try {
       const params = new URLSearchParams();
-      if (debouncedSearchTerm) params.append("search", debouncedSearchTerm);
+      if (searchTerm) params.append("search", searchTerm);
       if (filterType) params.append("creatureType", filterType);
       if (filterCR) params.append("challengeRating", filterCR);
 
@@ -151,22 +151,12 @@ export default function Creatures() {
     }
   };
 
-  
-  // Debounce search to avoid API spam on every keystroke
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
-    return () => clearTimeout(t);
-  }, [searchTerm]);
-
-useEffect(() => {
     fetchCreatures();
-  }, [campaignId, debouncedSearchTerm, filterType, filterCR]);
-
-  useEffect(() => {
     fetchUserRole();
-  }, [campaignId]);
+  }, [campaignId, searchTerm, filterType, filterCR]);
 
-// Check for navigation state to auto-open entity dialog
+  // Check for navigation state to auto-open entity dialog
   useEffect(() => {
     if (location.state?.openEntityId && creatures.length > 0) {
       const entityId = location.state.openEntityId;
