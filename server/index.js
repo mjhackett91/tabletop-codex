@@ -146,10 +146,16 @@ const writeLimiter = rateLimit({
 const authLimiter = rateLimit({
   keyGenerator: (req) => getClientIp(req),
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max:    20, // Limit each IP to 5 requests per windowMs
+  // NOTE: multiple devices on the same Wi‑Fi share a public IP.
+  // Counting *successful* logins can create "can't login on phone if I'm logged in on PC"
+  // style reports if the user hits the limiter. We only want to count failures.
+  max: 50, // documented default: 50 requests / 15 min
   message: "Too many authentication attempts, please try again later.",
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  // Don't rate-limit CORS preflight requests
+  skip: (req) => String(req.method || "").toUpperCase() === "OPTIONS",
 });
 
 app.use(express.json({ limit: "10mb" })); // Limit JSON payload size
