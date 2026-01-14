@@ -91,14 +91,28 @@ router.post("/login", async (req, res) => {
 
     // Trim whitespace and remove any hidden characters (iOS Safari autofill sometimes adds them)
     const trimmedUsername = typeof username === "string" ? username.trim().replace(/\u200B/g, '') : username;
-    const trimmedPassword = typeof password === "string" 
-      ? password.trim().replace(/\u200B/g, '').replace(/\n/g, '').replace(/\r/g, '') 
-      : password;
+    
+    // More aggressive password sanitization - remove all whitespace and control characters
+    let trimmedPassword = password;
+    if (typeof password === "string") {
+      // Remove all types of whitespace (spaces, tabs, newlines, etc.)
+      trimmedPassword = password.replace(/\s+/g, '');
+      // Remove zero-width spaces and other invisible characters
+      trimmedPassword = trimmedPassword.replace(/[\u200B-\u200D\uFEFF]/g, '');
+      // Remove control characters
+      trimmedPassword = trimmedPassword.replace(/[\x00-\x1F\x7F]/g, '');
+    }
 
     // Log request details (don't log actual password, just length and first char for debugging)
     console.log(`[Login] Attempt from IP: ${req.ip || req.connection.remoteAddress}`);
-    console.log(`[Login] Username: ${trimmedUsername}, Password length: ${trimmedPassword?.length || 0}`);
+    console.log(`[Login] Username: ${trimmedUsername}`);
+    console.log(`[Login] Original password length: ${password?.length || 0}, Trimmed length: ${trimmedPassword?.length || 0}`);
     console.log(`[Login] User-Agent: ${req.get("user-agent") || "unknown"}`);
+    
+    // Log first and last character codes for debugging (not the actual characters)
+    if (typeof password === "string" && password.length > 0) {
+      console.log(`[Login] First char code: ${password.charCodeAt(0)}, Last char code: ${password.charCodeAt(password.length - 1)}`);
+    }
 
     // Find user
     const user = await get("SELECT * FROM users WHERE username = $1 OR email = $1", [trimmedUsername]);

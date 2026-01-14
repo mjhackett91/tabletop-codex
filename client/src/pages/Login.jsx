@@ -34,15 +34,33 @@ export default function Login() {
         // Ignore cleanup errors
       }
 
-      // Trim whitespace from inputs (iOS autofill sometimes adds spaces)
+      // Aggressive password sanitization - remove ALL whitespace and control characters
+      // iOS Safari autofill sometimes adds hidden characters
+      let sanitizedPassword = formData.password || "";
+      if (typeof sanitizedPassword === "string") {
+        // Remove all whitespace (spaces, tabs, newlines, etc.)
+        sanitizedPassword = sanitizedPassword.replace(/\s+/g, '');
+        // Remove zero-width spaces and other invisible characters
+        sanitizedPassword = sanitizedPassword.replace(/[\u200B-\u200D\uFEFF]/g, '');
+        // Remove control characters
+        sanitizedPassword = sanitizedPassword.replace(/[\x00-\x1F\x7F]/g, '');
+      }
+      
       const trimmedData = {
         username: (formData.username || "").trim(),
-        password: (formData.password || "").trim()
+        password: sanitizedPassword
       };
       
       console.log("[Login] Attempting login for:", trimmedData.username);
-      console.log("[Login] Password length:", trimmedData.password.length);
+      console.log("[Login] Original password length:", (formData.password || "").length);
+      console.log("[Login] Sanitized password length:", trimmedData.password.length);
       console.log("[Login] Username length:", trimmedData.username.length);
+      
+      // Log character codes for first/last chars for debugging
+      if (formData.password && formData.password.length > 0) {
+        console.log("[Login] First char code:", formData.password.charCodeAt(0));
+        console.log("[Login] Last char code:", formData.password.charCodeAt(formData.password.length - 1));
+      }
       
       const response = await apiClient.post("/auth/login", trimmedData);
       console.log("[Login] Response received:", response ? "Success" : "Failed", response);

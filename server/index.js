@@ -186,6 +186,15 @@ app.get("/api/ping", (req, res) => {
   res.json({ ok: true });
 });
 
+// Version/health endpoint to verify deployment
+app.get("/api/version", (req, res) => {
+  res.json({ 
+    version: "1.0.0",
+    loginFix: "mobile-password-sanitization",
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Routes - All converted to PostgreSQL
 // Apply stricter rate limiting to auth routes
 app.use("/api/auth", authLimiter, authRouter);
