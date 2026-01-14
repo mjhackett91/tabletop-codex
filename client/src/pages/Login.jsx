@@ -34,8 +34,17 @@ export default function Login() {
         // Ignore cleanup errors
       }
 
-      console.log("[Login] Attempting login for:", formData.username);
-      const response = await apiClient.post("/auth/login", formData);
+      // Trim whitespace from inputs (iOS autofill sometimes adds spaces)
+      const trimmedData = {
+        username: (formData.username || "").trim(),
+        password: (formData.password || "").trim()
+      };
+      
+      console.log("[Login] Attempting login for:", trimmedData.username);
+      console.log("[Login] Password length:", trimmedData.password.length);
+      console.log("[Login] Username length:", trimmedData.username.length);
+      
+      const response = await apiClient.post("/auth/login", trimmedData);
       console.log("[Login] Response received:", response ? "Success" : "Failed", response);
       
       // Verify response has required data
@@ -130,8 +139,19 @@ export default function Login() {
             variant="outlined"
             value={formData.username}
             onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+            onBlur={(e) => {
+              const trimmed = e.target.value.trim();
+              if (trimmed !== e.target.value) {
+                setFormData({ ...formData, username: trimmed });
+              }
+            }}
             required
             autoFocus
+            autoComplete="username"
+            inputProps={{
+              autoCapitalize: "none",
+              autoCorrect: "off"
+            }}
           />
           <TextField
             fullWidth
@@ -141,7 +161,19 @@ export default function Login() {
             variant="outlined"
             value={formData.password}
             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+            onBlur={(e) => {
+              // Trim password on blur (but don't trim during typing to avoid issues)
+              const trimmed = e.target.value.trim();
+              if (trimmed !== e.target.value) {
+                setFormData({ ...formData, password: trimmed });
+              }
+            }}
             required
+            autoComplete="current-password"
+            inputProps={{
+              autoCapitalize: "none",
+              autoCorrect: "off"
+            }}
           />
           <Button
             type="submit"

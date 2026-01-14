@@ -89,17 +89,45 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Username and password required" });
     }
 
+    // Trim whitespace and remove any hidden characters (iOS Safari autofill sometimes adds them)
+    const trimmedUsername = typeof username === "string" ? username.trim().replace(/\u200B/g, '') : username;
+    const trimmedPassword = typeof password === "string" 
+      ? password.trim().replace(/\u200B/g, '').replace(/\n/g, '').replace(/\r/g, '') 
+      : password;
+
+    // Log request details (don't log actual password, just length and first char for debugging)
+    console.log(`[Login] Attempt from IP: ${req.ip || req.connection.remoteAddress}`);
+    console.log(`[Login] Username: ${trimmedUsername}, Password length: ${trimmedPassword?.length || 0}`);
+    console.log(`[Login] User-Agent: ${req.get("user-agent") || "unknown"}`);
+
     // Find user
-    const user = await get("SELECT * FROM users WHERE username = $1 OR email = $1", [username]);
+    const user = await get("SELECT * FROM users WHERE username = $1 OR email = $1", [trimmedUsername]);
     if (!user) {
+      console.log(`[Login] User not found: ${trimmedUsername}`);
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    console.log(`[Login] User found: ${user.username} (ID: ${user.id})`);
+
     // Verify password
-    const valid = await bcrypt.compare(password, user.password_hash);
+    // Try with trimmed password first
+    let valid = await bcrypt.compare(trimmedPassword, user.password_hash);
+    
+    // If that fails and original password was different, try original (in case trimming removed important chars)
+    if (!valid && password !== trimmedPassword) {
+      console.log(`[Login] Trimmed password failed, trying original password`);
+      valid = await bcrypt.compare(password, user.password_hash);
+    }
+    
     if (!valid) {
+      console.log(`[Login] Password mismatch for user: ${user.username}`);
+      console.log(`[Login] Received password length: ${password?.length || 0}, Trimmed length: ${trimmedPassword?.length || 0}`);
+      // Log password hash prefix for debugging (first 10 chars only)
+      console.log(`[Login] Stored hash prefix: ${user.password_hash?.substring(0, 10)}...`);
       return res.status(401).json({ error: "Invalid credentials" });
     }
+
+    console.log(`[Login] Authentication successful for user: ${user.username}`);
 
     const token = jwt.sign(
       { userId: user.id, username: user.username },
