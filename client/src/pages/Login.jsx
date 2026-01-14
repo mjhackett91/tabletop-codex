@@ -26,7 +26,6 @@ export default function Login() {
       try {
         const oldToken = localStorage.getItem("token");
         if (oldToken) {
-          console.log("[Login] Clearing old token before login attempt");
           localStorage.removeItem("token");
           localStorage.removeItem("user");
         }
@@ -51,19 +50,16 @@ export default function Login() {
         password: sanitizedPassword
       };
       
-      console.log("[Login] Attempting login for:", trimmedData.username);
-      console.log("[Login] Original password length:", (formData.password || "").length);
-      console.log("[Login] Sanitized password length:", trimmedData.password.length);
-      console.log("[Login] Username length:", trimmedData.username.length);
-      
-      // Log character codes for first/last chars for debugging
-      if (formData.password && formData.password.length > 0) {
-        console.log("[Login] First char code:", formData.password.charCodeAt(0));
-        console.log("[Login] Last char code:", formData.password.charCodeAt(formData.password.length - 1));
+      // Only log in development mode for security
+      if (import.meta.env.DEV) {
+        console.log("[Login] Attempting login for:", trimmedData.username);
       }
       
       const response = await apiClient.post("/auth/login", trimmedData);
-      console.log("[Login] Response received:", response ? "Success" : "Failed", response);
+      
+      if (import.meta.env.DEV) {
+        console.log("[Login] Response received:", response ? "Success" : "Failed");
+      }
       
       // Verify response has required data
       if (!response || !response.token) {
@@ -74,30 +70,25 @@ export default function Login() {
         return;
       }
       
-      console.log("[Login] Token received, length:", response.token?.length);
-
       try {
         // Store token with error handling
-        console.log("[Login] Attempting to save token to localStorage...");
         localStorage.setItem("token", response.token);
         localStorage.setItem("user", JSON.stringify(response.user));
-        console.log("[Login] Token saved to localStorage");
         
         // Verify token was actually saved (iOS Safari sometimes silently fails)
         const savedToken = localStorage.getItem("token");
-        console.log("[Login] Verifying saved token, exists:", !!savedToken, "length:", savedToken?.length);
         if (!savedToken || savedToken !== response.token) {
           const errorMsg = "Failed to save authentication token. Local storage may be disabled or in private browsing mode.";
-          console.error("[Login] Token verification failed. Expected length:", response.token?.length, "Got length:", savedToken?.length);
+          if (import.meta.env.DEV) {
+            console.error("[Login] Token verification failed");
+          }
           throw new Error(errorMsg);
         }
         
-        console.log("[Login] Token verified successfully");
         // Small delay to ensure localStorage is persisted
         await new Promise(resolve => setTimeout(resolve, 100));
         
         // Redirect to dashboard
-        console.log("[Login] Redirecting to dashboard...");
         navigate("/dashboard");
       } catch (storageError) {
         console.error("[Login] localStorage error:", storageError);

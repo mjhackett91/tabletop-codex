@@ -103,15 +103,12 @@ router.post("/login", async (req, res) => {
       trimmedPassword = trimmedPassword.replace(/[\x00-\x1F\x7F]/g, '');
     }
 
-    // Log request details (don't log actual password, just length and first char for debugging)
+    // Log request details (security: don't log password length or character codes in production)
     console.log(`[Login] Attempt from IP: ${req.ip || req.connection.remoteAddress}`);
     console.log(`[Login] Username: ${trimmedUsername}`);
-    console.log(`[Login] Original password length: ${password?.length || 0}, Trimmed length: ${trimmedPassword?.length || 0}`);
-    console.log(`[Login] User-Agent: ${req.get("user-agent") || "unknown"}`);
-    
-    // Log first and last character codes for debugging (not the actual characters)
-    if (typeof password === "string" && password.length > 0) {
-      console.log(`[Login] First char code: ${password.charCodeAt(0)}, Last char code: ${password.charCodeAt(password.length - 1)}`);
+    if (process.env.NODE_ENV !== "production") {
+      // Only log password length in development for debugging
+      console.log(`[Login] Password length: ${trimmedPassword?.length || 0}`);
     }
 
     // Find user
@@ -135,9 +132,10 @@ router.post("/login", async (req, res) => {
     
     if (!valid) {
       console.log(`[Login] Password mismatch for user: ${user.username}`);
-      console.log(`[Login] Received password length: ${password?.length || 0}, Trimmed length: ${trimmedPassword?.length || 0}`);
-      // Log password hash prefix for debugging (first 10 chars only)
-      console.log(`[Login] Stored hash prefix: ${user.password_hash?.substring(0, 10)}...`);
+      if (process.env.NODE_ENV !== "production") {
+        // Only log detailed info in development
+        console.log(`[Login] Received password length: ${password?.length || 0}, Trimmed length: ${trimmedPassword?.length || 0}`);
+      }
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
