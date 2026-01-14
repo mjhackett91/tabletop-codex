@@ -55,7 +55,7 @@ router.get("/:campaignId/creatures", requireCampaignAccess, async (req, res) => 
     }
 
     if (search) {
-      queryText += ` AND (c.name LIKE $${paramIndex} OR c.short_description LIKE $${paramIndex + 1})`;
+      queryText += ` AND (c.name ILIKE $${paramIndex} OR c.short_description ILIKE $${paramIndex + 1})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
       paramIndex += 2;

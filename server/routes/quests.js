@@ -137,7 +137,7 @@ router.get("/:campaignId/quests", requireCampaignAccess, async (req, res) => {
     }
 
     if (search) {
-      queryText += ` AND (q.title LIKE $${paramIndex} OR q.short_summary LIKE $${paramIndex + 1} OR q.description LIKE $${paramIndex + 2})`;
+      queryText += ` AND (q.title ILIKE $${paramIndex} OR q.short_summary ILIKE $${paramIndex + 1} OR q.description ILIKE $${paramIndex + 2})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm, searchTerm);
       paramIndex += 3;

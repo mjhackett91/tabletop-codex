@@ -39,6 +39,7 @@ import {
   FormLabel,
   RadioGroup,
   Radio,
+  Skeleton,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -120,6 +121,10 @@ export default function Quests() {
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [selectedTagIds, setSelectedTagIds] = useState([]);
   const [userRole, setUserRole] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
   
   // Entity data for linking
   const [availableEntities, setAvailableEntities] = useState({
@@ -139,7 +144,12 @@ export default function Quests() {
     }
 
     try {
-      const data = await apiClient.get(`/campaigns/${campaignId}/quests`);
+      const params = new URLSearchParams();
+      if (debouncedSearchTerm) {
+        params.append("search", debouncedSearchTerm);
+      }
+      
+      const data = await apiClient.get(`/campaigns/${campaignId}/quests?${params.toString()}`);
       setQuests(data);
     } catch (error) {
       console.error("Failed to fetch quests:", error);
@@ -163,10 +173,16 @@ export default function Quests() {
     }
   };
 
+  // Debounce search to avoid API spam on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   useEffect(() => {
     fetchQuests();
     fetchUserRole();
-  }, [campaignId]);
+  }, [campaignId, debouncedSearchTerm]);
 
   // Check for navigation state to auto-open entity dialog
   useEffect(() => {
@@ -325,19 +341,24 @@ export default function Quests() {
     }
   };
 
-  const handleDelete = async (questId) => {
-    if (!window.confirm("Are you sure you want to delete this quest? This will also delete all associated objectives, links, and milestones.")) {
-      return;
-    }
+  const handleDeleteClick = (questId) => {
+    setItemToDelete(questId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete) return;
 
     try {
-      await apiClient.delete(`/campaigns/${campaignId}/quests/${questId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/quests/${itemToDelete}`);
       setSnackbar({
         open: true,
         message: "Quest deleted successfully",
         severity: "success"
       });
       fetchQuests();
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     } catch (error) {
       console.error("Failed to delete quest:", error);
       setSnackbar({
@@ -345,7 +366,14 @@ export default function Quests() {
         message: error.message || "Failed to delete quest",
         severity: "error"
       });
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setItemToDelete(null);
   };
 
   const handleCloseSnackbar = () => {
@@ -615,6 +643,18 @@ export default function Quests() {
         </Box>
       </Box>
 
+      {/* Search */}
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          placeholder="Search quests..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          size="small"
+          sx={{ maxWidth: { xs: "100%", sm: 400 } }}
+        />
+      </Box>
+
       <TableContainer component={Paper} sx={{ backgroundColor: "background.paper" }}>
         <Table>
           <TableHead>
@@ -630,11 +670,17 @@ export default function Quests() {
           </TableHead>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">Loading quests...</Typography>
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 5 }).map((_, index) => (
+                <TableRow key={index}>
+                  <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="40%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="30%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="50%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="80%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="40%" /></TableCell>
+                  <TableCell align="right"><Skeleton variant="circular" width={32} height={32} /></TableCell>
+                </TableRow>
+              ))
             ) : quests.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
@@ -726,7 +772,10 @@ export default function Quests() {
                       <EditIcon />
                     </IconButton>
                     <IconButton
-                      onClick={() => handleDelete(quest.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(quest.id);
+                      }}
                       color="error"
                       size="small"
                     >
@@ -1320,6 +1369,31 @@ export default function Quests() {
             disabled={!formData.title.trim()}
           >
             {editingQuest ? "Update" : "Create"} Quest
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Quest?
+        </DialogTitle>
+        <DialogContent>
+          <Typography id="delete-dialog-description">
+            Are you sure you want to delete this quest? This will also delete all associated objectives, links, and milestones. This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus>
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

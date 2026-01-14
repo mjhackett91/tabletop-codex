@@ -34,6 +34,7 @@ import {
   Radio,
   Tabs,
   Tab,
+  Skeleton,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -79,6 +80,10 @@ export default function WorldInfo() {
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [selectedTagIds, setSelectedTagIds] = useState([]);
   const [userRole, setUserRole] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
 
   // Fetch world info
   const fetchWorldInfo = async () => {
@@ -89,7 +94,12 @@ export default function WorldInfo() {
 
     try {
       console.log("Fetching world info for campaign:", campaignId);
-      const data = await apiClient.get(`/campaigns/${campaignId}/world-info`);
+      const params = new URLSearchParams();
+      if (debouncedSearchTerm) {
+        params.append("search", debouncedSearchTerm);
+      }
+      
+      const data = await apiClient.get(`/campaigns/${campaignId}/world-info?${params.toString()}`);
       console.log("World info data received:", data);
       setWorldInfo(data);
     } catch (error) {
@@ -114,10 +124,16 @@ export default function WorldInfo() {
     }
   };
 
+  // Debounce search to avoid API spam on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   useEffect(() => {
     fetchWorldInfo();
     fetchUserRole();
-  }, [campaignId]);
+  }, [campaignId, debouncedSearchTerm]);
 
   // Check for navigation state to auto-open entity dialog
   useEffect(() => {
@@ -244,19 +260,24 @@ export default function WorldInfo() {
     }
   };
 
-  const handleDelete = async (infoId) => {
-    if (!window.confirm("Are you sure you want to delete this world info?")) {
-      return;
-    }
+  const handleDeleteClick = (infoId) => {
+    setItemToDelete(infoId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete) return;
 
     try {
-      await apiClient.delete(`/campaigns/${campaignId}/world-info/${infoId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/world-info/${itemToDelete}`);
       setSnackbar({
         open: true,
         message: "World info deleted successfully",
         severity: "success"
       });
       fetchWorldInfo();
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     } catch (error) {
       console.error("Failed to delete world info:", error);
       setSnackbar({
@@ -264,7 +285,14 @@ export default function WorldInfo() {
         message: error.message || "Failed to delete world info",
         severity: "error"
       });
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setItemToDelete(null);
   };
 
   const handleCloseSnackbar = () => {
@@ -304,6 +332,18 @@ export default function WorldInfo() {
             </Typography>
           </Box>
         </Box>
+      </Box>
+
+      {/* Search */}
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          placeholder="Search world info..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          size="small"
+          sx={{ maxWidth: { xs: "100%", sm: 400 } }}
+        />
       </Box>
 
       <Accordion 
@@ -365,11 +405,16 @@ export default function WorldInfo() {
           </TableHead>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">Loading world info...</Typography>
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 5 }).map((_, index) => (
+                <TableRow key={index}>
+                  <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="40%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="50%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="80%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="30%" /></TableCell>
+                  <TableCell align="right"><Skeleton variant="circular" width={32} height={32} /></TableCell>
+                </TableRow>
+              ))
             ) : worldInfo.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
@@ -458,7 +503,10 @@ export default function WorldInfo() {
                       <EditIcon />
                     </IconButton>
                     <IconButton
-                      onClick={() => handleDelete(info.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(info.id);
+                      }}
                       color="error"
                       size="small"
                     >
@@ -623,6 +671,31 @@ export default function WorldInfo() {
             disabled={!formData.title.trim()}
           >
             {editingWorldInfo ? "Update" : "Create"} Entry
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete World Info?
+        </DialogTitle>
+        <DialogContent>
+          <Typography id="delete-dialog-description">
+            Are you sure you want to delete this world info? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus>
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

@@ -52,6 +52,8 @@ export default function TagSelector({
   const [openManager, setOpenManager] = useState(false);
   const [editingTag, setEditingTag] = useState(null);
   const [tagForm, setTagForm] = useState({ name: "", color: "#FF5733", is_premade: false });
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [tagToDelete, setTagToDelete] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
 
   // Fetch tags for campaign
@@ -155,13 +157,16 @@ export default function TagSelector({
     }
   };
 
-  const handleDeleteTag = async (tagId) => {
-    if (!window.confirm("Are you sure you want to delete this tag? It will be removed from all entities.")) {
-      return;
-    }
+  const handleDeleteTagClick = (tagId) => {
+    setTagToDelete(tagId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteTagConfirm = async () => {
+    if (!tagToDelete) return;
 
     try {
-      await apiClient.delete(`/campaigns/${campaignId}/tags/${tagId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/tags/${tagToDelete}`);
       setSnackbar({
         open: true,
         message: "Tag deleted successfully",
@@ -169,9 +174,11 @@ export default function TagSelector({
       });
       fetchTags();
       // Remove from selected tags if it was selected
-      if (selectedTagIds.includes(tagId)) {
-        onChange(selectedTagIds.filter(id => id !== tagId));
+      if (selectedTagIds.includes(tagToDelete)) {
+        onChange(selectedTagIds.filter(id => id !== tagToDelete));
       }
+      setDeleteConfirmOpen(false);
+      setTagToDelete(null);
     } catch (error) {
       console.error("Failed to delete tag:", error);
       setSnackbar({
@@ -179,7 +186,14 @@ export default function TagSelector({
         message: error.message || "Failed to delete tag",
         severity: "error"
       });
+      setDeleteConfirmOpen(false);
+      setTagToDelete(null);
     }
+  };
+
+  const handleDeleteTagCancel = () => {
+    setDeleteConfirmOpen(false);
+    setTagToDelete(null);
   };
 
   const handleOpenEditDialog = (tag) => {
@@ -375,7 +389,7 @@ export default function TagSelector({
                     bgcolor: tag.color || "#757575",
                     color: "white",
                   }}
-                  onDelete={() => handleDeleteTag(tag.id)}
+                  onDelete={() => handleDeleteTagClick(tag.id)}
                   onClick={() => handleOpenEditDialog(tag)}
                   deleteIcon={<EditIcon sx={{ color: "white !important" }} />}
                 />
@@ -384,6 +398,31 @@ export default function TagSelector({
           </AccordionDetails>
         </Accordion>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteTagCancel}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Tag?
+        </DialogTitle>
+        <DialogContent>
+          <Typography id="delete-dialog-description">
+            Are you sure you want to delete this tag? It will be removed from all entities. This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteTagCancel} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteTagConfirm} color="error" variant="contained" autoFocus>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={snackbar.open}

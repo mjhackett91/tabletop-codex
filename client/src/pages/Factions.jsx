@@ -33,6 +33,7 @@ import {
   Radio,
   Tabs,
   Tab,
+  Skeleton,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -73,6 +74,10 @@ export default function Factions() {
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [selectedTagIds, setSelectedTagIds] = useState([]);
   const [userRole, setUserRole] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
 
   // Fetch factions
   const fetchFactions = async () => {
@@ -83,7 +88,12 @@ export default function Factions() {
 
     try {
       console.log("Fetching factions for campaign:", campaignId);
-      const data = await apiClient.get(`/campaigns/${campaignId}/factions`);
+      const params = new URLSearchParams();
+      if (debouncedSearchTerm) {
+        params.append("search", debouncedSearchTerm);
+      }
+      
+      const data = await apiClient.get(`/campaigns/${campaignId}/factions?${params.toString()}`);
       console.log("Factions data received:", data);
       setFactions(data);
     } catch (error) {
@@ -108,10 +118,16 @@ export default function Factions() {
     }
   };
 
+  // Debounce search to avoid API spam on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   useEffect(() => {
     fetchFactions();
     fetchUserRole();
-  }, [campaignId]);
+  }, [campaignId, debouncedSearchTerm]);
 
   // Check for navigation state to auto-open entity dialog
   useEffect(() => {
@@ -242,19 +258,24 @@ export default function Factions() {
     }
   };
 
-  const handleDelete = async (factionId) => {
-    if (!window.confirm("Are you sure you want to delete this faction?")) {
-      return;
-    }
+  const handleDeleteClick = (factionId) => {
+    setItemToDelete(factionId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete) return;
 
     try {
-      await apiClient.delete(`/campaigns/${campaignId}/factions/${factionId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/factions/${itemToDelete}`);
       setSnackbar({
         open: true,
         message: "Faction deleted successfully",
         severity: "success"
       });
       fetchFactions();
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     } catch (error) {
       console.error("Failed to delete faction:", error);
       setSnackbar({
@@ -262,7 +283,14 @@ export default function Factions() {
         message: error.message || "Failed to delete faction",
         severity: "error"
       });
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setItemToDelete(null);
   };
 
   const handleCloseSnackbar = () => {
@@ -302,6 +330,18 @@ export default function Factions() {
             </Typography>
           </Box>
         </Box>
+      </Box>
+
+      {/* Search */}
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          placeholder="Search factions..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          size="small"
+          sx={{ maxWidth: { xs: "100%", sm: 400 } }}
+        />
       </Box>
 
       <Accordion 
@@ -364,11 +404,17 @@ export default function Factions() {
           </TableHead>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">Loading factions...</Typography>
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 5 }).map((_, index) => (
+                <TableRow key={index}>
+                  <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="40%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="50%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="80%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="70%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="30%" /></TableCell>
+                  <TableCell align="right"><Skeleton variant="circular" width={32} height={32} /></TableCell>
+                </TableRow>
+              ))
             ) : factions.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
@@ -485,7 +531,10 @@ export default function Factions() {
                       <EditIcon />
                     </IconButton>
                     <IconButton
-                      onClick={() => handleDelete(faction.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(faction.id);
+                      }}
                       color="error"
                       size="small"
                     >
@@ -660,6 +709,31 @@ export default function Factions() {
             disabled={!formData.name.trim()}
           >
             {editingFaction ? "Update" : "Create"} Faction
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Faction?
+        </DialogTitle>
+        <DialogContent>
+          <Typography id="delete-dialog-description">
+            Are you sure you want to delete this faction? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus>
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

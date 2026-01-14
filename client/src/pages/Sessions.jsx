@@ -37,6 +37,7 @@ import {
   RadioGroup,
   FormControlLabel,
   Radio,
+  Skeleton,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -119,6 +120,10 @@ export default function Sessions() {
   const [editingPlayerNote, setEditingPlayerNote] = useState(null);
   const [addingPlayerNote, setAddingPlayerNote] = useState(false);
   const [selectedTagIds, setSelectedTagIds] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
 
   // Fetch user role
   const fetchUserRole = async () => {
@@ -148,7 +153,12 @@ export default function Sessions() {
 
     try {
       console.log("Fetching sessions for campaign:", campaignId);
-      const data = await apiClient.get(`/campaigns/${campaignId}/sessions`);
+      const params = new URLSearchParams();
+      if (debouncedSearchTerm) {
+        params.append("search", debouncedSearchTerm);
+      }
+      
+      const data = await apiClient.get(`/campaigns/${campaignId}/sessions?${params.toString()}`);
       console.log("Sessions data received:", data);
       setSessions(data);
     } catch (error) {
@@ -179,10 +189,16 @@ export default function Sessions() {
     }
   };
 
+  // Debounce search to avoid API spam on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   useEffect(() => {
     fetchSessions();
     fetchUserRole();
-  }, [campaignId]);
+  }, [campaignId, debouncedSearchTerm]);
 
   // Fetch entities for posting notes
   const fetchEntities = async () => {
@@ -387,19 +403,24 @@ export default function Sessions() {
     }
   };
 
-  const handleDelete = async (sessionId) => {
-    if (!window.confirm("Are you sure you want to delete this session? This will also delete all associated session notes.")) {
-      return;
-    }
+  const handleDeleteClick = (sessionId) => {
+    setItemToDelete(sessionId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete) return;
 
     try {
-      await apiClient.delete(`/campaigns/${campaignId}/sessions/${sessionId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/sessions/${itemToDelete}`);
       setSnackbar({
         open: true,
         message: "Session deleted successfully",
         severity: "success"
       });
       fetchSessions();
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     } catch (error) {
       console.error("Failed to delete session:", error);
       setSnackbar({
@@ -407,7 +428,14 @@ export default function Sessions() {
         message: error.message || "Failed to delete session",
         severity: "error"
       });
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setItemToDelete(null);
   };
 
   const handleCloseSnackbar = () => {
@@ -661,6 +689,18 @@ export default function Sessions() {
         </Box>
       </Box>
 
+      {/* Search */}
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          placeholder="Search sessions..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          size="small"
+          sx={{ maxWidth: { xs: "100%", sm: 400 } }}
+        />
+      </Box>
+
       <TableContainer component={Paper} sx={{ backgroundColor: "background.paper", mb: 3 }}>
         <Table>
           <TableHead>
@@ -676,11 +716,17 @@ export default function Sessions() {
           </TableHead>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">Loading sessions...</Typography>
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 5 }).map((_, index) => (
+                <TableRow key={index}>
+                  <TableCell><Skeleton variant="text" width="20%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="30%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="50%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="80%" /></TableCell>
+                  <TableCell><Skeleton variant="text" width="30%" /></TableCell>
+                  <TableCell align="right"><Skeleton variant="circular" width={32} height={32} /></TableCell>
+                </TableRow>
+              ))
             ) : sessions.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
@@ -779,7 +825,10 @@ export default function Sessions() {
                     {/* DMs can delete any session, players can delete their own */}
                     {(userRole === "dm" || session.created_by_user_id === currentUserId) && (
                       <IconButton
-                        onClick={() => handleDelete(session.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteClick(session.id);
+                        }}
                         color="error"
                         size="small"
                       >
@@ -1247,6 +1296,31 @@ export default function Sessions() {
               {editingSession ? "Update" : "Create"} Session
             </Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Session?
+        </DialogTitle>
+        <DialogContent>
+          <Typography id="delete-dialog-description">
+            Are you sure you want to delete this session? This will also delete all associated session notes. This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus>
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
 

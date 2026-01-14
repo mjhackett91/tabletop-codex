@@ -8,6 +8,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
   Button,
   Typography,
   CircularProgress,
@@ -30,6 +31,8 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [imageUrls, setImageUrls] = useState({}); // Cache of blob URLs
   const imageUrlsRef = useRef({}); // Keep ref for cleanup
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [imageToDelete, setImageToDelete] = useState(null);
 
   useEffect(() => {
     if (campaignId && entityType && entityId) {
@@ -180,20 +183,25 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
     }
   };
 
-  const handleDelete = async (imageId) => {
-    if (!window.confirm("Are you sure you want to delete this image?")) {
-      return;
-    }
+  const handleDeleteClick = (imageId) => {
+    setImageToDelete(imageId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!imageToDelete) return;
 
     try {
-      await apiClient.delete(`/campaigns/${campaignId}/images/${imageId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/images/${imageToDelete}`);
+      await fetchImages();
+      if (onUpdate) onUpdate();
       setSnackbar({
         open: true,
         message: "Image deleted successfully",
         severity: "success"
       });
-      fetchImages();
-      if (onUpdate) onUpdate();
+      setDeleteConfirmOpen(false);
+      setImageToDelete(null);
     } catch (error) {
       console.error("Failed to delete image:", error);
       setSnackbar({
@@ -201,7 +209,14 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
         message: error.message || "Failed to delete image",
         severity: "error"
       });
+      setDeleteConfirmOpen(false);
+      setImageToDelete(null);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setImageToDelete(null);
   };
 
   const handleCloseSnackbar = () => {
@@ -302,7 +317,7 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
                   className="delete-button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDelete(image.id);
+                    handleDeleteClick(image.id);
                   }}
                   sx={{
                     position: "absolute",
@@ -386,6 +401,31 @@ const ImageGallery = ({ campaignId, entityType, entityId, onUpdate }) => {
             </DialogContent>
           </>
         )}
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Image?
+        </DialogTitle>
+        <DialogContent>
+          <Typography id="delete-dialog-description">
+            Are you sure you want to delete this image? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus>
+            Delete
+          </Button>
+        </DialogActions>
       </Dialog>
 
       <Snackbar

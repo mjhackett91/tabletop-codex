@@ -50,7 +50,7 @@ router.get("/:campaignId/factions", requireCampaignAccess, async (req, res) => {
     }
 
     if (search) {
-      queryText += ` AND (f.name LIKE $${paramIndex} OR f.description LIKE $${paramIndex + 1} OR f.goals LIKE $${paramIndex + 2})`;
+      queryText += ` AND (f.name ILIKE $${paramIndex} OR f.description ILIKE $${paramIndex + 1} OR f.goals ILIKE $${paramIndex + 2})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm, searchTerm);
       paramIndex += 3;

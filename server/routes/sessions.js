@@ -50,7 +50,7 @@ router.get("/:campaignId/sessions", requireCampaignAccess, async (req, res) => {
     }
 
     if (search) {
-      queryText += ` AND (s.title LIKE $${paramIndex} OR s.summary LIKE $${paramIndex + 1})`;
+      queryText += ` AND (s.title ILIKE $${paramIndex} OR s.summary ILIKE $${paramIndex + 1})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
       paramIndex += 2;

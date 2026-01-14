@@ -56,7 +56,7 @@ router.get("/:campaignId/world-info", requireCampaignAccess, async (req, res) =>
     }
 
     if (search) {
-      queryText += ` AND (w.title LIKE $${paramIndex} OR w.content LIKE $${paramIndex + 1})`;
+      queryText += ` AND (w.title ILIKE $${paramIndex} OR w.content ILIKE $${paramIndex + 1})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
       paramIndex += 2;

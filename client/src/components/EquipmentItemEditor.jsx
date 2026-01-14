@@ -14,6 +14,11 @@ import {
   FormControlLabel,
   Checkbox,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -33,6 +38,7 @@ const ARMOR_TYPES = [
 
 export default function EquipmentItemEditor({ item, onChange, onDelete, readOnly = false }) {
   const [expanded, setExpanded] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const updateItem = (field, value) => {
     if (readOnly) return;
@@ -61,7 +67,7 @@ export default function EquipmentItemEditor({ item, onChange, onDelete, readOnly
               component="div"
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete();
+                setDeleteConfirmOpen(true);
               }}
               sx={{
                 display: "inline-flex",
@@ -345,6 +351,39 @@ export default function EquipmentItemEditor({ item, onChange, onDelete, readOnly
           </Grid>
         </Grid>
       </AccordionDetails>
+      
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Equipment Item?
+        </DialogTitle>
+        <DialogContent>
+          <Typography id="delete-dialog-description">
+            Are you sure you want to delete &quot;{item.name || "this item"}&quot;? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmOpen(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button 
+            onClick={() => {
+              setDeleteConfirmOpen(false);
+              onDelete();
+            }} 
+            color="error" 
+            variant="contained" 
+            autoFocus
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Accordion>
   );
 }

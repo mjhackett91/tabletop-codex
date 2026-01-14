@@ -13,6 +13,11 @@ import {
   FormControlLabel,
   Checkbox,
   MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -23,6 +28,7 @@ const SPELL_LEVELS = [
 
 export default function SpellItemEditor({ spell, onChange, onDelete, readOnly = false }) {
   const [expanded, setExpanded] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const updateSpell = (field, value) => {
     if (readOnly) return;
@@ -56,7 +62,7 @@ export default function SpellItemEditor({ spell, onChange, onDelete, readOnly = 
               component="div"
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete();
+                setDeleteConfirmOpen(true);
               }}
               sx={{
                 display: "inline-flex",
@@ -260,6 +266,39 @@ export default function SpellItemEditor({ spell, onChange, onDelete, readOnly = 
           </Grid>
         </Grid>
       </AccordionDetails>
+      
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Spell?
+        </DialogTitle>
+        <DialogContent>
+          <Typography id="delete-dialog-description">
+            Are you sure you want to delete &quot;{spell.name || "this spell"}&quot;? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmOpen(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button 
+            onClick={() => {
+              setDeleteConfirmOpen(false);
+              onDelete();
+            }} 
+            color="error" 
+            variant="contained" 
+            autoFocus
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Accordion>
   );
 }

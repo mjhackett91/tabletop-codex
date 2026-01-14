@@ -65,7 +65,7 @@ router.get("/:campaignId/locations", requireCampaignAccess, async (req, res) => 
     }
 
     if (search) {
-      queryText += ` AND (l.name LIKE $${paramIndex} OR l.description LIKE $${paramIndex + 1})`;
+      queryText += ` AND (l.name ILIKE $${paramIndex} OR l.description ILIKE $${paramIndex + 1})`;
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
       paramIndex += 2;

@@ -36,12 +36,15 @@ import {
   InputLabel,
   Tabs,
   Tab,
+  Skeleton,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import InfoIcon from "@mui/icons-material/Info";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import apiClient from "../services/apiClient";
 import RichTextEditor from "./RichTextEditor";
 import CampaignNav from "./CampaignNav";
@@ -110,8 +113,52 @@ export default function CharacterListPage({ type }) {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [dialogTab, setDialogTab] = useState(0);
   const [selectedTagIds, setSelectedTagIds] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("name");
+  const [sortOrder, setSortOrder] = useState("asc");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
 
   const config = TYPE_CONFIG[type];
+
+  // Handle column sorting
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      // Toggle sort order if clicking the same column
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      // Set new column and default to ascending
+      setSortBy(column);
+      setSortOrder("asc");
+    }
+  };
+
+  // Sort characters based on current sort settings
+  const sortedCharacters = [...characters].sort((a, b) => {
+    let aValue, bValue;
+    
+    switch (sortBy) {
+      case "name":
+        aValue = (a.name || "").toLowerCase();
+        bValue = (b.name || "").toLowerCase();
+        break;
+      case "alignment":
+        aValue = (a.alignment || "").toLowerCase();
+        bValue = (b.alignment || "").toLowerCase();
+        break;
+      case "created":
+        aValue = new Date(a.created_at || 0).getTime();
+        bValue = new Date(b.created_at || 0).getTime();
+        break;
+      default:
+        return 0;
+    }
+    
+    if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
+    if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
+    return 0;
+  });
 
   // Fetch characters
   const fetchCharacters = async () => {
@@ -123,7 +170,13 @@ export default function CharacterListPage({ type }) {
 
     try {
       console.log("Fetching characters for campaign:", campaignId, "type:", type);
-      const data = await apiClient.get(`/campaigns/${campaignId}/characters?type=${type}`);
+      const params = new URLSearchParams();
+      params.append("type", type);
+      if (debouncedSearchTerm) {
+        params.append("search", debouncedSearchTerm);
+      }
+      
+      const data = await apiClient.get(`/campaigns/${campaignId}/characters?${params.toString()}`);
       console.log("Characters data received:", data);
       // Log tags for each character to debug
       if (Array.isArray(data)) {
@@ -166,10 +219,16 @@ export default function CharacterListPage({ type }) {
     }
   };
 
+  // Debounce search to avoid API spam on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   useEffect(() => {
     fetchCharacters();
     fetchParticipants();
-  }, [campaignId, type]);
+  }, [campaignId, type, debouncedSearchTerm]);
 
   // Check for navigation state to auto-open entity dialog
   useEffect(() => {
@@ -410,17 +469,31 @@ export default function CharacterListPage({ type }) {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm(`Are you sure you want to delete this ${config.label.toLowerCase()}?`)) return;
+  const handleDeleteClick = (id) => {
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete) return;
 
     try {
-      await apiClient.delete(`/campaigns/${campaignId}/characters/${id}`);
+      await apiClient.delete(`/campaigns/${campaignId}/characters/${itemToDelete}`);
       await fetchCharacters();
       showSnackbar(`${config.label} deleted successfully`);
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     } catch (error) {
       console.error("Error deleting character:", error);
       showSnackbar(error.message, "error");
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setItemToDelete(null);
   };
 
   const formatDate = (dateString) => {
@@ -439,13 +512,19 @@ export default function CharacterListPage({ type }) {
     }
   };
 
-  if (loading) {
-    return (
-      <Box sx={{ textAlign: "center", mt: 4 }}>
-        <Typography>Loading {config.plural.toLowerCase()}...</Typography>
-      </Box>
-    );
-  }
+  // Loading skeleton rows
+  const renderSkeletonRows = () => {
+    return Array.from({ length: 5 }).map((_, index) => (
+      <TableRow key={index}>
+        <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+        <TableCell><Skeleton variant="text" width="40%" /></TableCell>
+        <TableCell><Skeleton variant="text" width="50%" /></TableCell>
+        <TableCell><Skeleton variant="text" width="80%" /></TableCell>
+        <TableCell><Skeleton variant="text" width="30%" /></TableCell>
+        <TableCell align="right"><Skeleton variant="circular" width={32} height={32} /></TableCell>
+      </TableRow>
+    ));
+  };
 
   return (
     <Box>
@@ -462,6 +541,18 @@ export default function CharacterListPage({ type }) {
           label={`${characters.length} ${config.plural.toLowerCase()}`} 
           color={config.color}
           variant="outlined"
+        />
+      </Box>
+
+      {/* Search */}
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          placeholder={`Search ${config.plural.toLowerCase()}...`}
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          size="small"
+          sx={{ maxWidth: { xs: "100%", sm: 400 } }}
         />
       </Box>
 
@@ -504,16 +595,48 @@ export default function CharacterListPage({ type }) {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Alignment</TableCell>
+              <TableCell 
+                sx={{ cursor: "pointer", userSelect: "none" }}
+                onClick={() => handleSort("name")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Name
+                  {sortBy === "name" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
+              <TableCell 
+                sx={{ cursor: "pointer", userSelect: "none" }}
+                onClick={() => handleSort("alignment")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Alignment
+                  {sortBy === "alignment" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
               <TableCell>Tags</TableCell>
               <TableCell>Description</TableCell>
-              <TableCell>Created</TableCell>
+              <TableCell 
+                sx={{ cursor: "pointer", userSelect: "none" }}
+                onClick={() => handleSort("created")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Created
+                  {sortBy === "created" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
               <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {characters.length === 0 ? (
+            {loading ? (
+              renderSkeletonRows()
+            ) : sortedCharacters.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
@@ -522,7 +645,7 @@ export default function CharacterListPage({ type }) {
                 </TableCell>
               </TableRow>
             ) : (
-              characters.map((character) => (
+              sortedCharacters.map((character) => (
                 <TableRow 
                   key={character.id} 
                   hover
@@ -647,7 +770,10 @@ export default function CharacterListPage({ type }) {
                       ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
                     ) && (
                       <IconButton
-                        onClick={() => handleDelete(character.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteClick(character.id);
+                        }}
                         color="error"
                         size="small"
                       >
@@ -931,6 +1057,31 @@ export default function CharacterListPage({ type }) {
               {editingCharacter ? "Update" : "Create"} {config.label}
             </Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete {config.label}?
+        </DialogTitle>
+        <DialogContent>
+          <Typography id="delete-dialog-description">
+            Are you sure you want to delete this {config.label.toLowerCase()}? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus>
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
 

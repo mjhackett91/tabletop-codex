@@ -35,6 +35,7 @@ import {
   Radio,
   Tabs,
   Tab,
+  Skeleton,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -42,6 +43,8 @@ import AddIcon from "@mui/icons-material/Add";
 import InfoIcon from "@mui/icons-material/Info";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import apiClient from "../services/apiClient";
 import RichTextEditor from "../components/RichTextEditor";
 import CampaignNav from "../components/CampaignNav";
@@ -74,6 +77,50 @@ export default function Locations() {
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [selectedTagIds, setSelectedTagIds] = useState([]);
   const [userRole, setUserRole] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("name");
+  const [sortOrder, setSortOrder] = useState("asc");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
+
+  // Handle column sorting
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      // Toggle sort order if clicking the same column
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      // Set new column and default to ascending
+      setSortBy(column);
+      setSortOrder("asc");
+    }
+  };
+
+  // Sort locations based on current sort settings
+  const sortedLocations = [...locations].sort((a, b) => {
+    let aValue, bValue;
+    
+    switch (sortBy) {
+      case "name":
+        aValue = (a.name || "").toLowerCase();
+        bValue = (b.name || "").toLowerCase();
+        break;
+      case "type":
+        aValue = (a.location_type || "").toLowerCase();
+        bValue = (b.location_type || "").toLowerCase();
+        break;
+      case "created":
+        aValue = new Date(a.created_at || 0).getTime();
+        bValue = new Date(b.created_at || 0).getTime();
+        break;
+      default:
+        return 0;
+    }
+    
+    if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
+    if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
+    return 0;
+  });
 
   // Fetch locations
   const fetchLocations = async () => {
@@ -84,7 +131,12 @@ export default function Locations() {
 
     try {
       console.log("Fetching locations for campaign:", campaignId);
-      const data = await apiClient.get(`/campaigns/${campaignId}/locations`);
+      const params = new URLSearchParams();
+      if (debouncedSearchTerm) {
+        params.append("search", debouncedSearchTerm);
+      }
+      
+      const data = await apiClient.get(`/campaigns/${campaignId}/locations?${params.toString()}`);
       console.log("Locations data received:", data);
       setLocations(data);
     } catch (error) {
@@ -109,10 +161,16 @@ export default function Locations() {
     }
   };
 
+  // Debounce search to avoid API spam on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   useEffect(() => {
     fetchLocations();
     fetchUserRole();
-  }, [campaignId]);
+  }, [campaignId, debouncedSearchTerm]);
 
   // Check for navigation state to auto-open entity dialog
   useEffect(() => {
@@ -259,19 +317,24 @@ export default function Locations() {
     }
   };
 
-  const handleDelete = async (locationId) => {
-    if (!window.confirm("Are you sure you want to delete this location?")) {
-      return;
-    }
+  const handleDeleteClick = (locationId) => {
+    setItemToDelete(locationId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete) return;
 
     try {
-      await apiClient.delete(`/campaigns/${campaignId}/locations/${locationId}`);
+      await apiClient.delete(`/campaigns/${campaignId}/locations/${itemToDelete}`);
       setSnackbar({
         open: true,
         message: "Location deleted successfully",
         severity: "success"
       });
       fetchLocations();
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     } catch (error) {
       console.error("Failed to delete location:", error);
       setSnackbar({
@@ -279,7 +342,14 @@ export default function Locations() {
         message: error.message || "Failed to delete location",
         severity: "error"
       });
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setItemToDelete(null);
   };
 
   const handleCloseSnackbar = () => {
@@ -335,6 +405,18 @@ export default function Locations() {
             </Typography>
           </Box>
         </Box>
+      </Box>
+
+      {/* Search */}
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          placeholder="Search locations..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          size="small"
+          sx={{ maxWidth: { xs: "100%", sm: 400 } }}
+        />
       </Box>
 
       <Accordion 
@@ -394,23 +476,59 @@ export default function Locations() {
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ minWidth: { xs: 150, sm: 180 } }}>Name</TableCell>
-              <TableCell sx={{ minWidth: 100, display: { xs: "none", md: "table-cell" } }}>Type</TableCell>
+              <TableCell 
+                sx={{ minWidth: { xs: 150, sm: 180 }, cursor: "pointer", userSelect: "none" }}
+                onClick={() => handleSort("name")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Name
+                  {sortBy === "name" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
+              <TableCell 
+                sx={{ minWidth: 100, display: { xs: "none", md: "table-cell" }, cursor: "pointer", userSelect: "none" }}
+                onClick={() => handleSort("type")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Type
+                  {sortBy === "type" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
               <TableCell sx={{ minWidth: 120, display: { xs: "none", lg: "table-cell" } }}>Tags</TableCell>
               <TableCell sx={{ minWidth: 150, display: { xs: "none", lg: "table-cell" } }}>Parent Location</TableCell>
               <TableCell sx={{ minWidth: 200, display: { xs: "none", sm: "table-cell" } }}>Description</TableCell>
-              <TableCell sx={{ minWidth: 100, display: { xs: "none", md: "table-cell" } }}>Created</TableCell>
+              <TableCell 
+                sx={{ minWidth: 100, display: { xs: "none", md: "table-cell" }, cursor: "pointer", userSelect: "none" }}
+                onClick={() => handleSort("created")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Created
+                  {sortBy === "created" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
               <TableCell align="right" sx={{ minWidth: 100 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">Loading locations...</Typography>
-                </TableCell>
-              </TableRow>
-            ) : locations.length === 0 ? (
+              Array.from({ length: 5 }).map((_, index) => (
+                <TableRow key={index}>
+                  <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}><Skeleton variant="text" width="40%" /></TableCell>
+                  <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}><Skeleton variant="text" width="50%" /></TableCell>
+                  <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}><Skeleton variant="text" width="40%" /></TableCell>
+                  <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}><Skeleton variant="text" width="80%" /></TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}><Skeleton variant="text" width="30%" /></TableCell>
+                  <TableCell align="right"><Skeleton variant="circular" width={32} height={32} /></TableCell>
+                </TableRow>
+              ))
+            ) : sortedLocations.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
@@ -419,7 +537,7 @@ export default function Locations() {
                 </TableCell>
               </TableRow>
             ) : (
-              locations.map((location) => (
+              sortedLocations.map((location) => (
                 <TableRow 
                   key={location.id} 
                   hover
@@ -524,7 +642,10 @@ export default function Locations() {
                       <EditIcon />
                     </IconButton>
                     <IconButton
-                      onClick={() => handleDelete(location.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(location.id);
+                      }}
                       color="error"
                       size="small"
                     >
@@ -716,6 +837,31 @@ export default function Locations() {
             disabled={!formData.name.trim()}
           >
             {editingLocation ? "Update" : "Create"} Location
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Location?
+        </DialogTitle>
+        <DialogContent>
+          <Typography id="delete-dialog-description">
+            Are you sure you want to delete this location? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus>
+            Delete
           </Button>
         </DialogActions>
       </Dialog>
