@@ -109,7 +109,8 @@ export default function Creatures() {
   });
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState("");  const [filterCR, setFilterCR] = useState("");
+const [filterType, setFilterType] = useState("");
+  const [filterCR, setFilterCR] = useState("");
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [selectedTagIds, setSelectedTagIds] = useState([]);
   const [userRole, setUserRole] = useState(null);

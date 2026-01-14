@@ -81,3 +81,66 @@ All configuration is done via environment variables:
 ## 📝 License
 
 Self-hosted - use as you wish!
+
+---
+
+## Rate Limiting & Search Behavior
+
+Table Top Codex is designed to support **search-heavy workflows** (wiki linking, live filters, autocomplete) while maintaining strong API protection and abuse prevention.
+
+### Overview
+
+The API uses **method-based rate limiting** and correctly resolves real client IPs when running behind **Cloudflare Tunnel / reverse proxies**.
+
+Rate limits are applied per client IP and reset every 15 minutes.
+
+### Rate Limit Buckets
+
+#### Read Requests (GET / HEAD / OPTIONS)
+- **Limit:** 20,000 requests / 15 minutes
+- **Purpose:**  
+  Supports live search, wiki linking, autocomplete, and filtering without triggering 429 errors.
+- **Examples:**  
+  - Creature search  
+  - Wiki link entity lookups  
+  - Campaign browsing  
+
+#### Write Requests (POST / PUT / PATCH / DELETE)
+- **Limit:** 4,000 requests / 15 minutes
+- **Purpose:**  
+  Prevents abuse while allowing normal campaign creation and editing.
+
+#### Authentication Endpoints (`/api/auth`)
+- **Limit:** 50 requests / 15 minutes
+- **Purpose:**  
+  Protects against brute-force login attempts.
+- **Behavior:**  
+  Returns a clear error message when exceeded.
+
+### Cloudflare & Proxy Awareness
+
+The backend correctly resolves client IPs using:
+- `cf-connecting-ip`
+- `x-forwarded-for`
+- Express `trust proxy` configuration
+
+This ensures:
+- Accurate rate limiting per real user
+- No accidental global throttling behind Cloudflare
+
+### Frontend Search Optimization
+
+To further reduce unnecessary API load:
+- Search inputs (e.g. Creatures page) use **debounced queries**
+- API calls are delayed until the user pauses typing
+- Role lookups and search requests are handled independently
+
+### Result
+
+- Wiki linking and live search work smoothly
+- No unintended 429 errors during normal use
+- Security controls remain intact
+- Scales cleanly for multiple concurrent players and DMs
+
+---
+
