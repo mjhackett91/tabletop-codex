@@ -19,6 +19,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EquipmentItemEditor from "./EquipmentItemEditor";
+import SpellItemEditor from "./SpellItemEditor";
 
 // D&D 5e ability scores
 const ABILITY_SCORES = [
@@ -226,6 +227,28 @@ export default function CharacterSheetEditor({ value, onChange, type = "player",
     const newEquipment = [...(sheet.equipment || [])];
     newEquipment.splice(index, 1);
     updateSheet({ equipment: newEquipment });
+  };
+
+  const addSpell = () => {
+    if (readOnly) return;
+    const newSpell = { name: "", level: "", castingTime: "", concentration: false, verbal: false, somatic: false, materials: false, materialsDescription: "" };
+    updateSheet({
+      spells: [...(sheet.spells || []), newSpell]
+    });
+  };
+
+  const updateSpell = (index, updatedSpell) => {
+    if (readOnly) return;
+    const newSpells = [...(sheet.spells || [])];
+    newSpells[index] = updatedSpell;
+    updateSheet({ spells: newSpells });
+  };
+
+  const removeSpell = (index) => {
+    if (readOnly) return;
+    const newSpells = [...(sheet.spells || [])];
+    newSpells.splice(index, 1);
+    updateSheet({ spells: newSpells });
   };
 
   const updateProficiencyList = (category, items) => {
@@ -586,6 +609,36 @@ export default function CharacterSheetEditor({ value, onChange, type = "player",
                 size="small"
               >
                 Add Item
+              </Button>
+            )}
+          </Box>
+        </AccordionDetails>
+      </Accordion>
+
+      {/* Spells */}
+      <Accordion>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography variant="h6">Spells</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {(sheet.spells || []).map((spell, index) => (
+              <SpellItemEditor
+                key={index}
+                spell={spell}
+                onChange={(updatedSpell) => updateSpell(index, updatedSpell)}
+                onDelete={() => removeSpell(index)}
+                readOnly={readOnly}
+              />
+            ))}
+            {!readOnly && (
+              <Button
+                startIcon={<AddIcon />}
+                onClick={addSpell}
+                variant="outlined"
+                size="small"
+              >
+                Add Spell
               </Button>
             )}
           </Box>

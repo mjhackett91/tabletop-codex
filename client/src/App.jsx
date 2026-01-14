@@ -21,7 +21,14 @@ import NotFound from "./pages/NotFound";
 
 // Protected Route component
 function ProtectedRoute({ children }) {
-  const token = localStorage.getItem("token");
+  let token = null;
+  try {
+    if (typeof Storage !== "undefined" && window.localStorage) {
+      token = localStorage.getItem("token");
+    }
+  } catch (e) {
+    console.warn("localStorage access failed in ProtectedRoute:", e);
+  }
   return token ? children : <Navigate to="/login" replace />;
 }
 

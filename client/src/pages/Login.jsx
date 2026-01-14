@@ -15,16 +15,88 @@ export default function Login() {
     setLoading(true);
 
     try {
+      // Check if localStorage is available (iOS Safari private mode blocks it)
+      if (typeof Storage === "undefined" || !window.localStorage) {
+        setError("Local storage is not available. Please disable private browsing mode.");
+        setLoading(false);
+        return;
+      }
+
+      // Clear any existing invalid token before attempting login
+      try {
+        const oldToken = localStorage.getItem("token");
+        if (oldToken) {
+          console.log("[Login] Clearing old token before login attempt");
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+        }
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+
+      console.log("[Login] Attempting login for:", formData.username);
       const response = await apiClient.post("/auth/login", formData);
+      console.log("[Login] Response received:", response ? "Success" : "Failed", response);
       
-      // Store token
-      localStorage.setItem("token", response.token);
-      localStorage.setItem("user", JSON.stringify(response.user));
+      // Verify response has required data
+      if (!response || !response.token) {
+        const errorMsg = "Login failed: Invalid response from server. Please try again.";
+        console.error("[Login] Response missing token:", response);
+        setError(errorMsg);
+        setLoading(false);
+        return;
+      }
       
-      // Redirect to dashboard
-      navigate("/dashboard");
+      console.log("[Login] Token received, length:", response.token?.length);
+
+      try {
+        // Store token with error handling
+        console.log("[Login] Attempting to save token to localStorage...");
+        localStorage.setItem("token", response.token);
+        localStorage.setItem("user", JSON.stringify(response.user));
+        console.log("[Login] Token saved to localStorage");
+        
+        // Verify token was actually saved (iOS Safari sometimes silently fails)
+        const savedToken = localStorage.getItem("token");
+        console.log("[Login] Verifying saved token, exists:", !!savedToken, "length:", savedToken?.length);
+        if (!savedToken || savedToken !== response.token) {
+          const errorMsg = "Failed to save authentication token. Local storage may be disabled or in private browsing mode.";
+          console.error("[Login] Token verification failed. Expected length:", response.token?.length, "Got length:", savedToken?.length);
+          throw new Error(errorMsg);
+        }
+        
+        console.log("[Login] Token verified successfully");
+        // Small delay to ensure localStorage is persisted
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Redirect to dashboard
+        console.log("[Login] Redirecting to dashboard...");
+        navigate("/dashboard");
+      } catch (storageError) {
+        console.error("[Login] localStorage error:", storageError);
+        setError(storageError.message || "Failed to save login credentials. Please check your browser settings or try disabling private browsing mode.");
+        // Clear any partial data
+        try {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
     } catch (err) {
-      setError(err.message || "Login failed");
+      console.error("Login error:", err);
+      // Show the actual error message from the server
+      // Server returns "Invalid credentials" for wrong username/password
+      if (err.message.includes("Invalid credentials")) {
+        setError("Invalid username or password. Please check your credentials and try again.");
+      } else if (err.message.includes("Network") || err.message.includes("fetch") || err.message.includes("Failed to fetch")) {
+        setError("Network error. Please check your connection and try again.");
+      } else if (err.message.includes("Too many")) {
+        setError("Too many login attempts. Please wait a few minutes and try again.");
+      } else {
+        // Show the actual error message from server
+        setError(err.message || "Login failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
