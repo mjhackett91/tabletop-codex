@@ -34,6 +34,7 @@ import {
   Tabs,
   Tab,
   Skeleton,
+  Tooltip,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -41,12 +42,15 @@ import AddIcon from "@mui/icons-material/Add";
 import InfoIcon from "@mui/icons-material/Info";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import GroupsIcon from "@mui/icons-material/Groups";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import apiClient from "../services/apiClient";
 import RichTextEditor from "../components/RichTextEditor";
 import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
 import ImageGallery from "../components/ImageGallery";
 import TagSelector from "../components/TagSelector";
+import EmptyState from "../components/EmptyState";
 import { sanitizeHTML } from "../utils/sanitize.js";
 
 const ALIGNMENTS = [
@@ -76,6 +80,8 @@ export default function Factions() {
   const [userRole, setUserRole] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("name");
+  const [sortOrder, setSortOrder] = useState("asc");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
@@ -150,6 +156,44 @@ export default function Factions() {
       }
     }
   }, [location.state, factions]);
+
+  // Handle column sorting
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      // Toggle sort order if clicking the same column
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      // Set new column and default to ascending
+      setSortBy(column);
+      setSortOrder("asc");
+    }
+  };
+
+  // Sort factions based on current sort settings
+  const sortedFactions = (Array.isArray(factions) ? [...factions] : []).sort((a, b) => {
+    let aValue, bValue;
+    
+    switch (sortBy) {
+      case "name":
+        aValue = (a.name || "").toLowerCase();
+        bValue = (b.name || "").toLowerCase();
+        break;
+      case "alignment":
+        aValue = (a.alignment || "").toLowerCase();
+        bValue = (b.alignment || "").toLowerCase();
+        break;
+      case "created":
+        aValue = new Date(a.created_at || 0).getTime();
+        bValue = new Date(b.created_at || 0).getTime();
+        break;
+      default:
+        return 0;
+    }
+    
+    if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
+    if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
+    return 0;
+  });
 
   // Fetch tags for a faction
   const fetchFactionTags = async (factionId) => {
@@ -438,12 +482,69 @@ export default function Factions() {
         <Table>
           <TableHead>
             <TableRow sx={{ bgcolor: "rgba(192, 163, 110, 0.05)" }}>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Name</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Alignment</TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("name")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Name
+                  {sortBy === "name" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("alignment")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Alignment
+                  {sortBy === "alignment" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
               <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Tags</TableCell>
               <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Description</TableCell>
               <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Goals</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Created</TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("created")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Created
+                  {sortBy === "created" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
               <TableCell align="right" sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -460,16 +561,28 @@ export default function Factions() {
                   <TableCell align="right"><Skeleton variant="circular" width={32} height={32} /></TableCell>
                 </TableRow>
               ))
-            ) : factions.length === 0 ? (
+            ) : sortedFactions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">
-                    No factions yet. Create your first faction!
-                  </Typography>
+                <TableCell colSpan={7} sx={{ p: 0, border: "none" }}>
+                  <EmptyState
+                    icon={GroupsIcon}
+                    title="No factions yet"
+                    description="Create your first faction to get started! Factions help you track organizations, guilds, and groups in your campaign world."
+                    suggestions={[
+                      "Define the faction's goals, values, and alignment",
+                      "Note key members and leadership structure",
+                      "Describe relationships with other factions and entities",
+                      "Track faction resources, territories, and influence",
+                      "Link factions to related characters, locations, and quests"
+                    ]}
+                    actionLabel="Create Faction"
+                    onAction={() => handleOpenDialog()}
+                    color="primary"
+                  />
                 </TableCell>
               </TableRow>
             ) : (
-              factions.map((faction) => (
+              sortedFactions.map((faction) => (
                 <TableRow 
                   key={faction.id} 
                   hover

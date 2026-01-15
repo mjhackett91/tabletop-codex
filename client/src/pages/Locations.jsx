@@ -36,6 +36,7 @@ import {
   Tabs,
   Tab,
   Skeleton,
+  Tooltip,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -52,6 +53,7 @@ import BackButton from "../components/BackButton";
 import ImageGallery from "../components/ImageGallery";
 import { sanitizeHTML } from "../utils/sanitize.js";
 import TagSelector from "../components/TagSelector";
+import EmptyState from "../components/EmptyState";
 
 const LOCATION_TYPES = [
   "City", "Town", "Village", "Dungeon", "Castle", "Tavern", "Shop",
@@ -598,10 +600,22 @@ export default function Locations() {
               ))
             ) : sortedLocations.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">
-                    No locations yet. Create your first location!
-                  </Typography>
+                <TableCell colSpan={7} sx={{ p: 0, border: "none" }}>
+                  <EmptyState
+                    icon={LocationOnIcon}
+                    title="No locations yet"
+                    description="Create your first location to get started! Locations help you track cities, dungeons, taverns, and other places in your campaign world."
+                    suggestions={[
+                      "Name the location clearly and descriptively",
+                      "Select an appropriate location type (City, Dungeon, Tavern, etc.)",
+                      "Use parent locations to create hierarchies (e.g., Tavern within City)",
+                      "Describe the location's appearance, atmosphere, and notable features",
+                      "Note important NPCs, events, or items associated with the location"
+                    ]}
+                    actionLabel="Create Location"
+                    onAction={() => handleOpenDialog()}
+                    color="primary"
+                  />
                 </TableCell>
               </TableRow>
             ) : (
@@ -704,23 +718,27 @@ export default function Locations() {
                     </Box>
                   </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()} sx={{ minWidth: 100 }}>
-                    <IconButton
-                      onClick={() => handleOpenDialog(location)}
-                      color="primary"
-                      size="small"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteClick(location.id);
-                      }}
-                      color="error"
-                      size="small"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                    <Tooltip title="Edit Location" arrow>
+                      <IconButton
+                        onClick={() => handleOpenDialog(location)}
+                        color="primary"
+                        size="small"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete Location" arrow>
+                      <IconButton
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteClick(location.id);
+                        }}
+                        color="error"
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))

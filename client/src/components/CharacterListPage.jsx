@@ -37,6 +37,7 @@ import {
   Tabs,
   Tab,
   Skeleton,
+  Tooltip,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -45,6 +46,9 @@ import InfoIcon from "@mui/icons-material/Info";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import PersonIcon from "@mui/icons-material/Person";
+import PeopleIcon from "@mui/icons-material/People";
+import DangerousIcon from "@mui/icons-material/Dangerous";
 import apiClient from "../services/apiClient";
 import RichTextEditor from "./RichTextEditor";
 import CampaignNav from "./CampaignNav";
@@ -54,6 +58,7 @@ import ImageGallery from "./ImageGallery";
 import TagSelector from "./TagSelector";
 import ViewToggle, { VIEW_MODES } from "./ViewToggle";
 import CharacterSheetViewer from "./CharacterSheetViewer";
+import EmptyState from "./EmptyState";
 import { Grid as MuiGrid, Card, CardContent, CardActions } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 
@@ -588,40 +593,45 @@ export default function CharacterListPage({ type }) {
             </Typography>
             <Box sx={{ display: "flex", gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
               {hasSheet && (
-                <IconButton
-                  onClick={(e) => handleViewSheet(character, e)}
-                  color="info"
-                  size="small"
-                  title="View Character Sheet"
-                >
-                  <VisibilityIcon />
-                </IconButton>
+                <Tooltip title="View Character Sheet" arrow>
+                  <IconButton
+                    onClick={(e) => handleViewSheet(character, e)}
+                    color="info"
+                    size="small"
+                  >
+                    <VisibilityIcon />
+                  </IconButton>
+                </Tooltip>
               )}
               {(userRole === "dm" || 
                 (character.type === "player" && character.player_user_id === currentUserId) ||
                 ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
               ) && (
-                <IconButton
-                  onClick={() => handleOpenDialog(character)}
-                  color={config.color}
-                  size="small"
-                >
-                  <EditIcon />
-                </IconButton>
+                <Tooltip title={`Edit ${config.label}`} arrow>
+                  <IconButton
+                    onClick={() => handleOpenDialog(character)}
+                    color={config.color}
+                    size="small"
+                  >
+                    <EditIcon />
+                  </IconButton>
+                </Tooltip>
               )}
               {(userRole === "dm" || 
                 ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
               ) && (
-                <IconButton
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteClick(character.id);
-                  }}
-                  color="error"
-                  size="small"
-                >
-                  <DeleteIcon />
-                </IconButton>
+                <Tooltip title={`Delete ${config.label}`} arrow>
+                  <IconButton
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteClick(character.id);
+                    }}
+                    color="error"
+                    size="small"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Tooltip>
               )}
             </Box>
           </Box>
@@ -863,10 +873,16 @@ export default function CharacterListPage({ type }) {
                 renderSkeletonRows()
               ) : sortedCharacters.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                    <Typography color="text.secondary">
-                      No {config.plural.toLowerCase()} yet. Create your first {config.label.toLowerCase()}!
-                    </Typography>
+                  <TableCell colSpan={6} sx={{ p: 0, border: "none" }}>
+                    <EmptyState
+                      icon={type === "player" ? PersonIcon : type === "npc" ? PeopleIcon : DangerousIcon}
+                      title={`No ${config.plural.toLowerCase()} yet`}
+                      description={`Create your first ${config.label.toLowerCase()} to get started! ${config.plural} help you track important people in your campaign.`}
+                      suggestions={config.suggestions}
+                      actionLabel={`Create ${config.label}`}
+                      onAction={() => handleOpenDialog()}
+                      color={config.color}
+                    />
                   </TableCell>
                 </TableRow>
               ) : (
@@ -983,42 +999,47 @@ export default function CharacterListPage({ type }) {
                       {character.character_sheet && 
                        (typeof character.character_sheet === 'object' || 
                         (typeof character.character_sheet === 'string' && character.character_sheet.trim())) && (
-                        <IconButton
-                          onClick={(e) => handleViewSheet(character, e)}
-                          color="info"
-                          size="small"
-                          title="View Character Sheet"
-                        >
-                          <VisibilityIcon />
-                        </IconButton>
+                        <Tooltip title="View Character Sheet" arrow>
+                          <IconButton
+                            onClick={(e) => handleViewSheet(character, e)}
+                            color="info"
+                            size="small"
+                          >
+                            <VisibilityIcon />
+                          </IconButton>
+                        </Tooltip>
                       )}
                       {/* Show edit button if user is DM, owns the character, or created the NPC/antagonist */}
                       {(userRole === "dm" || 
                         (character.type === "player" && character.player_user_id === currentUserId) ||
                         ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
                       ) && (
-                        <IconButton
-                          onClick={() => handleOpenDialog(character)}
-                          color={config.color}
-                          size="small"
-                        >
-                          <EditIcon />
-                        </IconButton>
+                        <Tooltip title={`Edit ${config.label}`} arrow>
+                          <IconButton
+                            onClick={() => handleOpenDialog(character)}
+                            color={config.color}
+                            size="small"
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        </Tooltip>
                       )}
                       {/* Only DMs can delete, or players can delete NPCs/antagonists they created */}
                       {(userRole === "dm" || 
                         ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
                       ) && (
-                        <IconButton
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteClick(character.id);
-                          }}
-                          color="error"
-                          size="small"
-                        >
-                          <DeleteIcon />
-                        </IconButton>
+                        <Tooltip title={`Delete ${config.label}`} arrow>
+                          <IconButton
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteClick(character.id);
+                            }}
+                            color="error"
+                            size="small"
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
                       )}
                     </TableCell>
                   </TableRow>
@@ -1042,11 +1063,15 @@ export default function CharacterListPage({ type }) {
               ))}
             </Box>
           ) : sortedCharacters.length === 0 ? (
-            <Paper sx={{ p: 4, textAlign: "center" }}>
-              <Typography color="text.secondary">
-                No {config.plural.toLowerCase()} yet. Create your first {config.label.toLowerCase()}!
-              </Typography>
-            </Paper>
+            <EmptyState
+              icon={type === "player" ? PersonIcon : type === "npc" ? PeopleIcon : DangerousIcon}
+              title={`No ${config.plural.toLowerCase()} yet`}
+              description={`Create your first ${config.label.toLowerCase()} to get started! ${config.plural} help you track important people in your campaign.`}
+              suggestions={config.suggestions}
+              actionLabel={`Create ${config.label}`}
+              onAction={() => handleOpenDialog()}
+              color={config.color}
+            />
           ) : (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {sortedCharacters.map(renderCharacterCard)}
@@ -1070,11 +1095,15 @@ export default function CharacterListPage({ type }) {
               ))}
             </MuiGrid>
           ) : sortedCharacters.length === 0 ? (
-            <Paper sx={{ p: 4, textAlign: "center" }}>
-              <Typography color="text.secondary">
-                No {config.plural.toLowerCase()} yet. Create your first {config.label.toLowerCase()}!
-              </Typography>
-            </Paper>
+            <EmptyState
+              icon={type === "player" ? PersonIcon : type === "npc" ? PeopleIcon : DangerousIcon}
+              title={`No ${config.plural.toLowerCase()} yet`}
+              description={`Create your first ${config.label.toLowerCase()} to get started! ${config.plural} help you track important people in your campaign.`}
+              suggestions={config.suggestions}
+              actionLabel={`Create ${config.label}`}
+              onAction={() => handleOpenDialog()}
+              color={config.color}
+            />
           ) : (
             <MuiGrid container spacing={2}>
               {sortedCharacters.map((character) => (

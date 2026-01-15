@@ -35,6 +35,7 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   Divider,
+  Tooltip,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -806,30 +807,33 @@ export default function Dashboard() {
                   <Box>
                     {campaign.is_owner && (
                       <>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenSharing(campaign)}
-                          color="primary"
-                          title="Share Campaign"
-                        >
-                          <ShareIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenDialog(campaign)}
-                          color="primary"
-                          title="Edit Campaign"
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDelete(campaign.id)}
-                          color="error"
-                          title="Delete Campaign"
-                        >
-                          <DeleteIcon />
-                        </IconButton>
+                        <Tooltip title="Share Campaign" arrow>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenSharing(campaign)}
+                            color="primary"
+                          >
+                            <ShareIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Edit Campaign" arrow>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenDialog(campaign)}
+                            color="primary"
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Campaign" arrow>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDelete(campaign.id)}
+                            color="error"
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
                       </>
                     )}
                   </Box>

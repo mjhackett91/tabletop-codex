@@ -35,6 +35,7 @@ import {
   Tabs,
   Tab,
   Skeleton,
+  Tooltip,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -42,12 +43,15 @@ import AddIcon from "@mui/icons-material/Add";
 import InfoIcon from "@mui/icons-material/Info";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import apiClient from "../services/apiClient";
 import RichTextEditor from "../components/RichTextEditor";
 import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
 import ImageGallery from "../components/ImageGallery";
 import TagSelector from "../components/TagSelector";
+import EmptyState from "../components/EmptyState";
 
 const CATEGORIES = [
   "History",
@@ -82,6 +86,8 @@ export default function WorldInfo() {
   const [userRole, setUserRole] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("title");
+  const [sortOrder, setSortOrder] = useState("asc");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
@@ -156,6 +162,44 @@ export default function WorldInfo() {
       }
     }
   }, [location.state, worldInfo]);
+
+  // Handle column sorting
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      // Toggle sort order if clicking the same column
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      // Set new column and default to ascending
+      setSortBy(column);
+      setSortOrder("asc");
+    }
+  };
+
+  // Sort world info based on current sort settings
+  const sortedWorldInfo = (Array.isArray(worldInfo) ? [...worldInfo] : []).sort((a, b) => {
+    let aValue, bValue;
+    
+    switch (sortBy) {
+      case "title":
+        aValue = (a.title || "").toLowerCase();
+        bValue = (b.title || "").toLowerCase();
+        break;
+      case "category":
+        aValue = (a.category || "").toLowerCase();
+        bValue = (b.category || "").toLowerCase();
+        break;
+      case "created":
+        aValue = new Date(a.created_at || 0).getTime();
+        bValue = new Date(b.created_at || 0).getTime();
+        break;
+      default:
+        return 0;
+    }
+    
+    if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
+    if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
+    return 0;
+  });
 
   // Fetch tags for a world info entry
   const fetchWorldInfoTags = async (infoId) => {
@@ -440,11 +484,68 @@ export default function WorldInfo() {
         <Table>
           <TableHead>
             <TableRow sx={{ bgcolor: "rgba(192, 163, 110, 0.05)" }}>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Title</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Category</TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("title")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Title
+                  {sortBy === "title" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("category")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Category
+                  {sortBy === "category" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
               <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Tags</TableCell>
               <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Content</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Created</TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("created")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Created
+                  {sortBy === "created" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
               <TableCell align="right" sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -460,16 +561,28 @@ export default function WorldInfo() {
                   <TableCell align="right"><Skeleton variant="circular" width={32} height={32} /></TableCell>
                 </TableRow>
               ))
-            ) : worldInfo.length === 0 ? (
+            ) : sortedWorldInfo.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">
-                    No world information yet. Create your first entry!
-                  </Typography>
+                <TableCell colSpan={6} sx={{ p: 0, border: "none" }}>
+                  <EmptyState
+                    icon={MenuBookIcon}
+                    title="No world information yet"
+                    description="Create your first world information entry to get started! World information helps you document lore, history, magic systems, and other important details about your campaign world."
+                    suggestions={[
+                      "Choose a clear, descriptive title for your entry",
+                      "Select an appropriate category (History, Magic, Religion, etc.)",
+                      "Use rich text formatting to organize information clearly",
+                      "Link entries to related characters, locations, and quests",
+                      "Keep entries organized and easy to reference during sessions"
+                    ]}
+                    actionLabel="Create World Information"
+                    onAction={() => handleOpenDialog()}
+                    color="primary"
+                  />
                 </TableCell>
               </TableRow>
             ) : (
-              worldInfo.map((info) => (
+              sortedWorldInfo.map((info) => (
                 <TableRow 
                   key={info.id} 
                   hover
@@ -542,23 +655,27 @@ export default function WorldInfo() {
                     </Box>
                   </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                    <IconButton
-                      onClick={() => handleOpenDialog(info)}
-                      color="primary"
-                      size="small"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteClick(info.id);
-                      }}
-                      color="error"
-                      size="small"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                    <Tooltip title="Edit World Information" arrow>
+                      <IconButton
+                        onClick={() => handleOpenDialog(info)}
+                        color="primary"
+                        size="small"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete World Information" arrow>
+                      <IconButton
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteClick(info.id);
+                        }}
+                        color="error"
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))

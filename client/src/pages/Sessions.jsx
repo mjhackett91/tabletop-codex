@@ -38,12 +38,15 @@ import {
   FormControlLabel,
   Radio,
   Skeleton,
+  Tooltip,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import EventIcon from "@mui/icons-material/Event";
 import PersonIcon from "@mui/icons-material/Person";
+import InfoIcon from "@mui/icons-material/Info";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import PeopleIcon from "@mui/icons-material/People";
 import DangerousIcon from "@mui/icons-material/Dangerous";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
@@ -57,6 +60,7 @@ import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
 import ImageGallery from "../components/ImageGallery";
 import TagSelector from "../components/TagSelector";
+import EmptyState from "../components/EmptyState";
 
 const SECTIONS = [
   { key: "summary", label: "Summary", icon: EventIcon },
@@ -735,6 +739,57 @@ export default function Sessions() {
         />
       </Box>
 
+      {/* Helpful Info Accordion */}
+      <Accordion 
+        defaultExpanded 
+        sx={{ 
+          mb: 3, 
+          bgcolor: "background.paper",
+          background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+          border: "1px solid rgba(192, 163, 110, 0.2)",
+          borderRadius: 2,
+          "&:before": { display: "none" }
+        }}
+      >
+        <AccordionSummary 
+          expandIcon={<ExpandMoreIcon sx={{ color: "primary.main" }} />}
+          sx={{
+            bgcolor: "rgba(192, 163, 110, 0.05)",
+            "&:hover": { bgcolor: "rgba(192, 163, 110, 0.1)" },
+            transition: "background-color 0.2s ease"
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", width: "100%", mr: 1 }}>
+            <InfoIcon sx={{ mr: 1, color: "primary.main" }} />
+            <Typography variant="h6" color="primary.main">
+              Creating Sessions: What to Include
+            </Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Box component="ul" sx={{ m: 0, pl: 3 }}>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Record session number and date for easy reference
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Add a descriptive title summarizing the session
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Document key events, NPCs encountered, and locations visited
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Link sessions to related quests, characters, and locations
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Track XP gained, items found, and important decisions made
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Use player notes section to capture player perspectives and observations
+            </Typography>
+          </Box>
+        </AccordionDetails>
+      </Accordion>
+
       <TableContainer 
         component={Paper} 
         sx={{ 
@@ -773,10 +828,22 @@ export default function Sessions() {
               ))
             ) : sessions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">
-                    No sessions yet. Create your first session!
-                  </Typography>
+                <TableCell colSpan={7} sx={{ p: 0, border: "none" }}>
+                  <EmptyState
+                    icon={EventIcon}
+                    title="No sessions yet"
+                    description="Create your first session to get started! Sessions help you track game sessions, notes, and what happened during each play session."
+                    suggestions={[
+                      "Record session number and date for easy reference",
+                      "Add a descriptive title summarizing the session",
+                      "Document key events, NPCs encountered, and locations visited",
+                      "Link sessions to related quests, characters, and locations",
+                      "Track XP gained, items found, and important decisions made"
+                    ]}
+                    actionLabel="Create Session"
+                    onAction={() => handleOpenDialog()}
+                    color="primary"
+                  />
                 </TableCell>
               </TableRow>
             ) : (
@@ -860,26 +927,30 @@ export default function Sessions() {
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                     {/* Show edit button if user is DM or created the session */}
                     {(userRole === "dm" || session.created_by_user_id === currentUserId) && (
-                      <IconButton
-                        onClick={() => handleOpenDialog(session)}
-                        color="primary"
-                        size="small"
-                      >
-                        <EditIcon />
-                      </IconButton>
+                      <Tooltip title="Edit Session" arrow>
+                        <IconButton
+                          onClick={() => handleOpenDialog(session)}
+                          color="primary"
+                          size="small"
+                        >
+                          <EditIcon />
+                        </IconButton>
+                      </Tooltip>
                     )}
                     {/* DMs can delete any session, players can delete their own */}
                     {(userRole === "dm" || session.created_by_user_id === currentUserId) && (
-                      <IconButton
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteClick(session.id);
-                        }}
-                        color="error"
-                        size="small"
-                      >
-                        <DeleteIcon />
-                      </IconButton>
+                      <Tooltip title="Delete Session" arrow>
+                        <IconButton
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteClick(session.id);
+                          }}
+                          color="error"
+                          size="small"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Tooltip>
                     )}
                   </TableCell>
                 </TableRow>
@@ -1202,20 +1273,24 @@ export default function Sessions() {
                         </Box>
                         {note.user_id === currentUserId && (
                           <Box>
-                            <IconButton
-                              size="small"
-                              onClick={() => handleEditPlayerNote(note)}
-                              color="primary"
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton
-                              size="small"
-                              onClick={() => handleDeletePlayerNote(note.id)}
-                              color="error"
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
+                            <Tooltip title="Edit Note" arrow>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleEditPlayerNote(note)}
+                                color="primary"
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete Note" arrow>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeletePlayerNote(note.id)}
+                                color="error"
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
                           </Box>
                         )}
                       </Box>

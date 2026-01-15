@@ -40,6 +40,10 @@ import {
   RadioGroup,
   Radio,
   Skeleton,
+  Tooltip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -48,12 +52,15 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
+import InfoIcon from "@mui/icons-material/Info";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import apiClient from "../services/apiClient";
 import RichTextEditor from "../components/RichTextEditor";
 import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
 import ImageGallery from "../components/ImageGallery";
 import TagSelector from "../components/TagSelector";
+import EmptyState from "../components/EmptyState";
 
 const QUEST_TYPES = [
   { value: "main", label: "Main Quest" },
@@ -689,6 +696,57 @@ export default function Quests() {
         />
       </Box>
 
+      {/* Helpful Info Accordion */}
+      <Accordion 
+        defaultExpanded 
+        sx={{ 
+          mb: 3, 
+          bgcolor: "background.paper",
+          background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+          border: "1px solid rgba(192, 163, 110, 0.2)",
+          borderRadius: 2,
+          "&:before": { display: "none" }
+        }}
+      >
+        <AccordionSummary 
+          expandIcon={<ExpandMoreIcon sx={{ color: "primary.main" }} />}
+          sx={{
+            bgcolor: "rgba(192, 163, 110, 0.05)",
+            "&:hover": { bgcolor: "rgba(192, 163, 110, 0.1)" },
+            transition: "background-color 0.2s ease"
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", width: "100%", mr: 1 }}>
+            <InfoIcon sx={{ mr: 1, color: "primary.main" }} />
+            <Typography variant="h6" color="primary.main">
+              Creating Quests: What to Include
+            </Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Box component="ul" sx={{ m: 0, pl: 3 }}>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Define clear objectives and goals for the quest
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Set quest type (Main Quest, Side Quest) and status
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Add urgency level to prioritize quests
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Link quests to related characters, locations, and factions
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Track milestones and progress as the quest unfolds
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Add objectives with clear completion criteria
+            </Typography>
+          </Box>
+        </AccordionDetails>
+      </Accordion>
+
       <TableContainer 
         component={Paper} 
         sx={{ 
@@ -726,10 +784,22 @@ export default function Quests() {
               ))
             ) : quests.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">
-                    No quests yet. Create your first quest!
-                  </Typography>
+                <TableCell colSpan={7} sx={{ p: 0, border: "none" }}>
+                  <EmptyState
+                    icon={AssignmentIcon}
+                    title="No quests yet"
+                    description="Create your first quest to get started! Quests help you track missions, objectives, and storylines in your campaign."
+                    suggestions={[
+                      "Define clear objectives and goals for the quest",
+                      "Set quest type (Main Quest, Side Quest) and status",
+                      "Add urgency level to prioritize quests",
+                      "Link quests to related characters, locations, and factions",
+                      "Track milestones and progress as the quest unfolds"
+                    ]}
+                    actionLabel="Create Quest"
+                    onAction={() => handleOpenDialog()}
+                    color="primary"
+                  />
                 </TableCell>
               </TableRow>
             ) : (
@@ -812,23 +882,27 @@ export default function Quests() {
                     )}
                   </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                    <IconButton
-                      onClick={() => handleOpenDialog(quest)}
-                      color="primary"
-                      size="small"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteClick(quest.id);
-                      }}
-                      color="error"
-                      size="small"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                    <Tooltip title="Edit Quest" arrow>
+                      <IconButton
+                        onClick={() => handleOpenDialog(quest)}
+                        color="primary"
+                        size="small"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete Quest" arrow>
+                      <IconButton
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteClick(quest.id);
+                        }}
+                        color="error"
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))

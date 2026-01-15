@@ -37,6 +37,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Tooltip,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -44,12 +45,15 @@ import AddIcon from "@mui/icons-material/Add";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import InfoIcon from "@mui/icons-material/Info";
 import PetsIcon from "@mui/icons-material/Pets";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import apiClient from "../services/apiClient";
 import RichTextEditor from "../components/RichTextEditor";
 import CampaignNav from "../components/CampaignNav";
 import BackButton from "../components/BackButton";
 import ImageGallery from "../components/ImageGallery";
 import TagSelector from "../components/TagSelector";
+import EmptyState from "../components/EmptyState";
 
 const SIZES = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
 const CREATURE_TYPES = [
@@ -111,6 +115,8 @@ export default function Creatures() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("");  const [filterCR, setFilterCR] = useState("");
+  const [sortBy, setSortBy] = useState("name");
+  const [sortOrder, setSortOrder] = useState("asc");
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [selectedTagIds, setSelectedTagIds] = useState([]);
   const [userRole, setUserRole] = useState(null);
@@ -188,6 +194,64 @@ useEffect(() => {
       }
     }
   }, [location.state, creatures]);
+
+  // Handle column sorting
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      // Toggle sort order if clicking the same column
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      // Set new column and default to ascending
+      setSortBy(column);
+      setSortOrder("asc");
+    }
+  };
+
+  // Sort creatures based on current sort settings
+  const sortedCreatures = (Array.isArray(creatures) ? [...creatures] : []).sort((a, b) => {
+    let aValue, bValue;
+    
+    switch (sortBy) {
+      case "name":
+        aValue = (a.name || "").toLowerCase();
+        bValue = (b.name || "").toLowerCase();
+        break;
+      case "type":
+        aValue = (a.creature_type || "").toLowerCase();
+        bValue = (b.creature_type || "").toLowerCase();
+        break;
+      case "cr":
+        // Parse CR (could be "1/8", "1/4", "1/2", or number)
+        const parseCR = (cr) => {
+          if (!cr) return 0;
+          if (cr === "1/8") return 0.125;
+          if (cr === "1/4") return 0.25;
+          if (cr === "1/2") return 0.5;
+          return parseFloat(cr) || 0;
+        };
+        aValue = parseCR(a.challenge_rating);
+        bValue = parseCR(b.challenge_rating);
+        break;
+      case "ac":
+        aValue = parseInt(a.ac || 0, 10);
+        bValue = parseInt(b.ac || 0, 10);
+        break;
+      case "hp":
+        aValue = parseInt(a.hp || 0, 10);
+        bValue = parseInt(b.hp || 0, 10);
+        break;
+      case "created":
+        aValue = new Date(a.created_at || 0).getTime();
+        bValue = new Date(b.created_at || 0).getTime();
+        break;
+      default:
+        return 0;
+    }
+    
+    if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
+    if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
+    return 0;
+  });
 
   // Fetch tags for a creature
   const fetchCreatureTags = async (creatureId) => {
@@ -603,28 +667,154 @@ useEffect(() => {
         <Table>
           <TableHead>
             <TableRow sx={{ bgcolor: "rgba(192, 163, 110, 0.05)" }}>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Name</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Type</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>CR</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>AC</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>HP</TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("name")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Name
+                  {sortBy === "name" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("type")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Type
+                  {sortBy === "type" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("cr")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  CR
+                  {sortBy === "cr" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("ac")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  AC
+                  {sortBy === "ac" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("hp")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  HP
+                  {sortBy === "hp" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
               <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Tags</TableCell>
               <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Visibility</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Created</TableCell>
+              <TableCell 
+                sx={{ 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600, 
+                  color: "primary.main", 
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
+                onClick={() => handleSort("created")}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  Created
+                  {sortBy === "created" && (
+                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
+                  )}
+                </Box>
+              </TableCell>
               <TableCell align="right" sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {creatures.length === 0 ? (
+            {sortedCreatures.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center">
-                  <Typography color="text.secondary" sx={{ py: 4 }}>
-                    No creatures found. Create your first creature to get started!
-                  </Typography>
+                <TableCell colSpan={9} sx={{ p: 0, border: "none" }}>
+                  <EmptyState
+                    icon={PetsIcon}
+                    title="No creatures yet"
+                    description="Create your first creature to get started! Creatures help you track monsters, beasts, and other entities with full D&D 5e-style statblocks."
+                    suggestions={[
+                      "Include full D&D 5e-style statblock (AC, HP, speed, ability scores)",
+                      "Add creature type, size, and challenge rating (CR)",
+                      "List skills, saving throws, damage resistances/immunities, and condition immunities",
+                      "Describe special abilities, actions, legendary actions, and lair actions",
+                      "Note senses, languages, and any special traits or behaviors"
+                    ]}
+                    actionLabel="Create Creature"
+                    onAction={() => handleOpenDialog()}
+                    color="primary"
+                  />
                 </TableCell>
               </TableRow>
             ) : (
-              creatures.map((creature) => (
+              sortedCreatures.map((creature) => (
                 <TableRow 
                   key={creature.id} 
                   hover
@@ -710,20 +900,24 @@ useEffect(() => {
                     </Box>
                   </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                    <IconButton
-                      onClick={() => handleOpenDialog(creature)}
-                      color="primary"
-                      size="small"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      onClick={() => handleDelete(creature.id)}
-                      color="error"
-                      size="small"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                    <Tooltip title="Edit Creature" arrow>
+                      <IconButton
+                        onClick={() => handleOpenDialog(creature)}
+                        color="primary"
+                        size="small"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete Creature" arrow>
+                      <IconButton
+                        onClick={() => handleDelete(creature.id)}
+                        color="error"
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))
