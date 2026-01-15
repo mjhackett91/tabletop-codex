@@ -52,6 +52,10 @@ import CharacterSheetEditor from "./CharacterSheetEditor";
 import BackButton from "./BackButton";
 import ImageGallery from "./ImageGallery";
 import TagSelector from "./TagSelector";
+import ViewToggle, { VIEW_MODES } from "./ViewToggle";
+import CharacterSheetViewer from "./CharacterSheetViewer";
+import { Grid as MuiGrid, Card, CardContent, CardActions } from "@mui/material";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 
 const TYPE_CONFIG = {
   player: {
@@ -119,6 +123,20 @@ export default function CharacterListPage({ type }) {
   const [sortOrder, setSortOrder] = useState("asc");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
+  
+  // View mode state with localStorage persistence
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`viewMode_characters_${type}`);
+      return saved || VIEW_MODES.TABLE;
+    } catch {
+      return VIEW_MODES.TABLE;
+    }
+  });
+
+  // Character sheet viewer state
+  const [sheetViewerOpen, setSheetViewerOpen] = useState(false);
+  const [viewingCharacter, setViewingCharacter] = useState(null);
 
   const config = TYPE_CONFIG[type];
 
@@ -526,6 +544,148 @@ export default function CharacterListPage({ type }) {
     ));
   };
 
+  // Open character sheet viewer
+  const handleViewSheet = (character, e) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    setViewingCharacter(character);
+    setSheetViewerOpen(true);
+  };
+
+  // Render character card for grid/list views
+  const renderCharacterCard = (character) => {
+    const hasContent = character.description && 
+      character.description.trim() && 
+      character.description.replace(/<[^>]*>/g, '').trim().length > 0;
+    const hasSheet = character.character_sheet && 
+      (typeof character.character_sheet === 'object' || 
+       (typeof character.character_sheet === 'string' && character.character_sheet.trim()));
+
+    return (
+      <Card
+        key={character.id}
+        sx={{
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          cursor: "pointer",
+          background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+          border: "1px solid rgba(192, 163, 110, 0.1)",
+          transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+          "&:hover": {
+            boxShadow: "0 8px 24px rgba(192, 163, 110, 0.15), 0 4px 8px rgba(0, 0, 0, 0.3)",
+            transform: "translateY(-4px)",
+            borderColor: "rgba(192, 163, 110, 0.3)",
+          }
+        }}
+        onClick={() => handleOpenDialog(character)}
+      >
+        <CardContent sx={{ flexGrow: 1 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1 }}>
+            <Typography variant="h6" fontWeight="medium">
+              {character.name}
+            </Typography>
+            <Box sx={{ display: "flex", gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
+              {hasSheet && (
+                <IconButton
+                  onClick={(e) => handleViewSheet(character, e)}
+                  color="info"
+                  size="small"
+                  title="View Character Sheet"
+                >
+                  <VisibilityIcon />
+                </IconButton>
+              )}
+              {(userRole === "dm" || 
+                (character.type === "player" && character.player_user_id === currentUserId) ||
+                ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
+              ) && (
+                <IconButton
+                  onClick={() => handleOpenDialog(character)}
+                  color={config.color}
+                  size="small"
+                >
+                  <EditIcon />
+                </IconButton>
+              )}
+              {(userRole === "dm" || 
+                ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
+              ) && (
+                <IconButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteClick(character.id);
+                  }}
+                  color="error"
+                  size="small"
+                >
+                  <DeleteIcon />
+                </IconButton>
+              )}
+            </Box>
+          </Box>
+          
+          <Box sx={{ display: "flex", gap: 1, mb: 1, flexWrap: "wrap" }}>
+            {character.player_user_id && type === "player" && (
+              <Chip label="Assigned" size="small" color="success" variant="outlined" />
+            )}
+            {character.player_user_id === currentUserId && (
+              <Chip label="Your Character" size="small" color="primary" variant="filled" />
+            )}
+            {character.alignment && (
+              <Chip label={character.alignment} size="small" variant="outlined" />
+            )}
+          </Box>
+
+          {character.tags && character.tags.length > 0 && (
+            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mb: 1 }}>
+              {character.tags.map((tag) => (
+                <Chip
+                  key={tag.id}
+                  label={tag.name}
+                  size="small"
+                  sx={{
+                    backgroundColor: tag.color || "#616161",
+                    color: "#fff",
+                    fontSize: "0.7rem",
+                    height: 20
+                  }}
+                />
+              ))}
+            </Box>
+          )}
+
+          {hasContent ? (
+            <Box
+              sx={{
+                maxHeight: viewMode === VIEW_MODES.GRID ? 100 : 150,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                "& p": { margin: 0, fontSize: "0.875rem" }
+              }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHTML(character.description) }}
+            />
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
+              No description
+            </Typography>
+          )}
+        </CardContent>
+        <CardActions sx={{ justifyContent: "space-between", px: 2, pb: 2 }}>
+          <Typography variant="caption" color="text.secondary">
+            {formatDate(character.created_at)}
+          </Typography>
+          {character.created_by_username && (
+            <Typography variant="caption" color="text.secondary">
+              by {character.created_by_username}
+            </Typography>
+          )}
+        </CardActions>
+      </Card>
+    );
+  };
+
   return (
     <Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
@@ -533,26 +693,53 @@ export default function CharacterListPage({ type }) {
         <CampaignNav campaignId={campaignId} />
       </Box>
       
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-        <Typography variant="h4" color={`${config.color}.main`}>
+      <Box sx={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "center", 
+        mb: 4,
+        pb: 3,
+        borderBottom: "1px solid rgba(192, 163, 110, 0.2)"
+      }}>
+        <Typography 
+          variant="h4" 
+          color={`${config.color}.main`}
+          sx={{
+            fontWeight: 700,
+            letterSpacing: "0.5px",
+            fontSize: { xs: "1.75rem", sm: "2.25rem" }
+          }}
+        >
           {config.plural}
         </Typography>
         <Chip 
           label={`${characters.length} ${config.plural.toLowerCase()}`} 
           color={config.color}
           variant="outlined"
+          sx={{
+            fontSize: "0.875rem",
+            height: 32,
+            px: 1.5,
+            borderWidth: 1.5,
+            fontWeight: 600
+          }}
         />
       </Box>
 
-      {/* Search */}
-      <Box sx={{ mb: 3 }}>
+      {/* Search and View Toggle */}
+      <Box sx={{ mb: 3, display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
         <TextField
           fullWidth
           placeholder={`Search ${config.plural.toLowerCase()}...`}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           size="small"
-          sx={{ maxWidth: { xs: "100%", sm: 400 } }}
+          sx={{ maxWidth: { xs: "100%", sm: 400 }, flex: 1, minWidth: 200 }}
+        />
+        <ViewToggle 
+          viewMode={viewMode} 
+          onViewModeChange={setViewMode}
+          storageKey={`characters_${type}`}
         />
       </Box>
 
@@ -591,202 +778,314 @@ export default function CharacterListPage({ type }) {
         </AccordionDetails>
       </Accordion>
 
-      <TableContainer component={Paper} sx={{ backgroundColor: "background.paper" }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell 
-                sx={{ cursor: "pointer", userSelect: "none" }}
-                onClick={() => handleSort("name")}
-              >
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                  Name
-                  {sortBy === "name" && (
-                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
-                  )}
-                </Box>
-              </TableCell>
-              <TableCell 
-                sx={{ cursor: "pointer", userSelect: "none" }}
-                onClick={() => handleSort("alignment")}
-              >
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                  Alignment
-                  {sortBy === "alignment" && (
-                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
-                  )}
-                </Box>
-              </TableCell>
-              <TableCell>Tags</TableCell>
-              <TableCell>Description</TableCell>
-              <TableCell 
-                sx={{ cursor: "pointer", userSelect: "none" }}
-                onClick={() => handleSort("created")}
-              >
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                  Created
-                  {sortBy === "created" && (
-                    sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
-                  )}
-                </Box>
-              </TableCell>
-              <TableCell align="right">Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {loading ? (
-              renderSkeletonRows()
-            ) : sortedCharacters.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">
-                    No {config.plural.toLowerCase()} yet. Create your first {config.label.toLowerCase()}!
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
-              sortedCharacters.map((character) => (
-                <TableRow 
-                  key={character.id} 
-                  hover
-                  onClick={() => handleOpenDialog(character)}
+      {/* Conditional rendering based on view mode */}
+      {viewMode === VIEW_MODES.TABLE ? (
+        <TableContainer 
+          component={Paper} 
+          sx={{ 
+            backgroundColor: "background.paper",
+            background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+            border: "1px solid rgba(192, 163, 110, 0.1)",
+            borderRadius: 2,
+            overflow: "hidden"
+          }}
+        >
+          <Table>
+            <TableHead>
+              <TableRow sx={{ bgcolor: "rgba(192, 163, 110, 0.05)" }}>
+                <TableCell 
                   sx={{ 
-                    cursor: "pointer",
+                    cursor: "pointer", 
+                    userSelect: "none",
+                    fontWeight: 600,
+                    color: "primary.main",
+                    py: 2,
                     "&:hover": {
-                      bgcolor: "action.hover"
+                      bgcolor: "rgba(192, 163, 110, 0.1)",
                     }
                   }}
+                  onClick={() => handleSort("name")}
                 >
-                  <TableCell>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                      <Typography variant="subtitle1" fontWeight="medium">
-                        {character.name}
-                      </Typography>
-                      {character.player_user_id && type === "player" && (
-                        <Chip 
-                          label="Assigned" 
-                          size="small" 
-                          color="success" 
-                          variant="outlined"
-                          sx={{ fontSize: "0.7rem", height: 20 }}
-                        />
-                      )}
-                      {character.player_user_id === currentUserId && (
-                        <Chip 
-                          label="Your Character" 
-                          size="small" 
-                          color="primary" 
-                          variant="filled"
-                          sx={{ fontSize: "0.7rem", height: 20 }}
-                        />
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    {character.alignment && (
-                      <Chip label={character.alignment} size="small" variant="outlined" />
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                    Name
+                    {sortBy === "name" && (
+                      sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
                     )}
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                      {character.tags && character.tags.length > 0 ? (
-                        character.tags.map((tag) => (
-                          <Chip
-                            key={tag.id}
-                            label={tag.name}
-                            size="small"
-                            sx={{
-                              backgroundColor: tag.color || "#616161",
-                              color: "#fff",
-                              fontSize: "0.7rem",
-                              height: 20
-                            }}
-                          />
-                        ))
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          No tags
-                        </Typography>
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    {(() => {
-                      // Check if description has actual content (not just empty HTML tags)
-                      const hasContent = character.description && 
-                        character.description.trim() && 
-                        character.description.replace(/<[^>]*>/g, '').trim().length > 0;
-                      
-                      if (hasContent) {
-                        return (
-                          <Box
-                            sx={{ 
-                              maxWidth: 300, 
-                              overflow: "hidden", 
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              "& p": { margin: 0, display: "inline" },
-                              "& *": { display: "inline" }
-                            }}
-                            dangerouslySetInnerHTML={{ __html: sanitizeHTML(character.description) }}
-                          />
-                        );
-                      }
-                      return (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
-                          No description
-                        </Typography>
-                      );
-                    })()}
-                  </TableCell>
-                  <TableCell>
-                    <Box>
-                      <Typography color="text.secondary" variant="body2">
-                        {formatDate(character.created_at)}
-                      </Typography>
-                      {character.created_by_username && (
-                        <Typography color="text.secondary" variant="caption" display="block">
-                          by {character.created_by_username}
-                        </Typography>
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                    {/* Show edit button if user is DM, owns the character, or created the NPC/antagonist */}
-                    {(userRole === "dm" || 
-                      (character.type === "player" && character.player_user_id === currentUserId) ||
-                      ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
-                    ) && (
-                      <IconButton
-                        onClick={() => handleOpenDialog(character)}
-                        color={config.color}
-                        size="small"
-                      >
-                        <EditIcon />
-                      </IconButton>
+                  </Box>
+                </TableCell>
+                <TableCell 
+                  sx={{ 
+                    cursor: "pointer", 
+                    userSelect: "none",
+                    fontWeight: 600,
+                    color: "primary.main",
+                    py: 2,
+                    "&:hover": {
+                      bgcolor: "rgba(192, 163, 110, 0.1)",
+                    }
+                  }}
+                  onClick={() => handleSort("alignment")}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                    Alignment
+                    {sortBy === "alignment" && (
+                      sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
                     )}
-                    {/* Only DMs can delete, or players can delete NPCs/antagonists they created */}
-                    {(userRole === "dm" || 
-                      ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
-                    ) && (
-                      <IconButton
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteClick(character.id);
-                        }}
-                        color="error"
-                        size="small"
-                      >
-                        <DeleteIcon />
-                      </IconButton>
+                  </Box>
+                </TableCell>
+                <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Tags</TableCell>
+                <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Description</TableCell>
+                <TableCell 
+                  sx={{ 
+                    cursor: "pointer", 
+                    userSelect: "none",
+                    fontWeight: 600,
+                    color: "primary.main",
+                    py: 2,
+                    "&:hover": {
+                      bgcolor: "rgba(192, 163, 110, 0.1)",
+                    }
+                  }}
+                  onClick={() => handleSort("created")}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                    Created
+                    {sortBy === "created" && (
+                      sortOrder === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />
                     )}
+                  </Box>
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading ? (
+                renderSkeletonRows()
+              ) : sortedCharacters.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                    <Typography color="text.secondary">
+                      No {config.plural.toLowerCase()} yet. Create your first {config.label.toLowerCase()}!
+                    </Typography>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+              ) : (
+                sortedCharacters.map((character) => (
+                  <TableRow 
+                    key={character.id} 
+                    hover
+                    onClick={() => handleOpenDialog(character)}
+                    sx={{ 
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                      "&:hover": {
+                        bgcolor: "rgba(192, 163, 110, 0.08)",
+                        transform: "scale(1.01)",
+                      }
+                    }}
+                  >
+                    <TableCell>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <Typography variant="subtitle1" fontWeight="medium">
+                          {character.name}
+                        </Typography>
+                        {character.player_user_id && type === "player" && (
+                          <Chip 
+                            label="Assigned" 
+                            size="small" 
+                            color="success" 
+                            variant="outlined"
+                            sx={{ fontSize: "0.7rem", height: 20 }}
+                          />
+                        )}
+                        {character.player_user_id === currentUserId && (
+                          <Chip 
+                            label="Your Character" 
+                            size="small" 
+                            color="primary" 
+                            variant="filled"
+                            sx={{ fontSize: "0.7rem", height: 20 }}
+                          />
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      {character.alignment && (
+                        <Chip label={character.alignment} size="small" variant="outlined" />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                        {character.tags && character.tags.length > 0 ? (
+                          character.tags.map((tag) => (
+                            <Chip
+                              key={tag.id}
+                              label={tag.name}
+                              size="small"
+                              sx={{
+                                backgroundColor: tag.color || "#616161",
+                                color: "#fff",
+                                fontSize: "0.7rem",
+                                height: 20
+                              }}
+                            />
+                          ))
+                        ) : (
+                          <Typography variant="caption" color="text.secondary">
+                            No tags
+                          </Typography>
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        // Check if description has actual content (not just empty HTML tags)
+                        const hasContent = character.description && 
+                          character.description.trim() && 
+                          character.description.replace(/<[^>]*>/g, '').trim().length > 0;
+                        
+                        if (hasContent) {
+                          return (
+                            <Box
+                              sx={{ 
+                                maxWidth: 300, 
+                                overflow: "hidden", 
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                "& p": { margin: 0, display: "inline" },
+                                "& *": { display: "inline" }
+                              }}
+                              dangerouslySetInnerHTML={{ __html: sanitizeHTML(character.description) }}
+                            />
+                          );
+                        }
+                        return (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic" }}>
+                            No description
+                          </Typography>
+                        );
+                      })()}
+                    </TableCell>
+                    <TableCell>
+                      <Box>
+                        <Typography color="text.secondary" variant="body2">
+                          {formatDate(character.created_at)}
+                        </Typography>
+                        {character.created_by_username && (
+                          <Typography color="text.secondary" variant="caption" display="block">
+                            by {character.created_by_username}
+                          </Typography>
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                      {/* Show character sheet viewer button if sheet exists */}
+                      {character.character_sheet && 
+                       (typeof character.character_sheet === 'object' || 
+                        (typeof character.character_sheet === 'string' && character.character_sheet.trim())) && (
+                        <IconButton
+                          onClick={(e) => handleViewSheet(character, e)}
+                          color="info"
+                          size="small"
+                          title="View Character Sheet"
+                        >
+                          <VisibilityIcon />
+                        </IconButton>
+                      )}
+                      {/* Show edit button if user is DM, owns the character, or created the NPC/antagonist */}
+                      {(userRole === "dm" || 
+                        (character.type === "player" && character.player_user_id === currentUserId) ||
+                        ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
+                      ) && (
+                        <IconButton
+                          onClick={() => handleOpenDialog(character)}
+                          color={config.color}
+                          size="small"
+                        >
+                          <EditIcon />
+                        </IconButton>
+                      )}
+                      {/* Only DMs can delete, or players can delete NPCs/antagonists they created */}
+                      {(userRole === "dm" || 
+                        ((character.type === "npc" || character.type === "antagonist") && character.created_by_user_id === currentUserId)
+                      ) && (
+                        <IconButton
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteClick(character.id);
+                          }}
+                          color="error"
+                          size="small"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      ) : viewMode === VIEW_MODES.LIST ? (
+        <Box>
+          {loading ? (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {Array.from({ length: 5 }).map((_, index) => (
+                <Card key={index}>
+                  <CardContent>
+                    <Skeleton variant="text" width="60%" height={40} />
+                    <Skeleton variant="text" width="40%" />
+                    <Skeleton variant="text" width="80%" />
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
+          ) : sortedCharacters.length === 0 ? (
+            <Paper sx={{ p: 4, textAlign: "center" }}>
+              <Typography color="text.secondary">
+                No {config.plural.toLowerCase()} yet. Create your first {config.label.toLowerCase()}!
+              </Typography>
+            </Paper>
+          ) : (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {sortedCharacters.map(renderCharacterCard)}
+            </Box>
+          )}
+        </Box>
+      ) : (
+        <Box>
+          {loading ? (
+            <MuiGrid container spacing={2}>
+              {Array.from({ length: 6 }).map((_, index) => (
+                <MuiGrid item xs={12} sm={6} md={4} key={index}>
+                  <Card>
+                    <CardContent>
+                      <Skeleton variant="text" width="60%" height={40} />
+                      <Skeleton variant="text" width="40%" />
+                      <Skeleton variant="text" width="80%" />
+                    </CardContent>
+                  </Card>
+                </MuiGrid>
+              ))}
+            </MuiGrid>
+          ) : sortedCharacters.length === 0 ? (
+            <Paper sx={{ p: 4, textAlign: "center" }}>
+              <Typography color="text.secondary">
+                No {config.plural.toLowerCase()} yet. Create your first {config.label.toLowerCase()}!
+              </Typography>
+            </Paper>
+          ) : (
+            <MuiGrid container spacing={2}>
+              {sortedCharacters.map((character) => (
+                <MuiGrid item xs={12} sm={6} md={4} key={character.id}>
+                  {renderCharacterCard(character)}
+                </MuiGrid>
+              ))}
+            </MuiGrid>
+          )}
+        </Box>
+      )}
 
       {/* Allow players to create NPCs/antagonists, and all participants can create player characters */}
       {(userRole === "dm" || type === "player" || (type === "npc" && userRole === "player") || (type === "antagonist" && userRole === "player")) && (
@@ -1094,6 +1393,17 @@ export default function CharacterListPage({ type }) {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* Character Sheet Viewer */}
+      <CharacterSheetViewer
+        open={sheetViewerOpen}
+        onClose={() => {
+          setSheetViewerOpen(false);
+          setViewingCharacter(null);
+        }}
+        characterSheet={viewingCharacter?.character_sheet}
+        characterName={viewingCharacter?.name}
+      />
     </Box>
   );
 }

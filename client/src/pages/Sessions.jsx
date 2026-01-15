@@ -677,12 +677,46 @@ export default function Sessions() {
         <CampaignNav campaignId={campaignId} />
       </Box>
 
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+      <Box sx={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "center", 
+        mb: 4,
+        pb: 3,
+        borderBottom: "1px solid rgba(192, 163, 110, 0.2)"
+      }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <EventIcon sx={{ fontSize: 40, color: "primary.main" }} />
+          <Box
+            sx={{
+              p: 1.5,
+              borderRadius: 2,
+              background: "rgba(192, 163, 110, 0.1)",
+              border: "1px solid rgba(192, 163, 110, 0.2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <EventIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: "primary.main" }} />
+          </Box>
           <Box>
-            <Typography variant="h4">Session Notes</Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography 
+              variant="h4"
+              sx={{
+                fontWeight: 700,
+                color: "primary.main",
+                letterSpacing: "0.5px",
+                fontSize: { xs: "1.75rem", sm: "2.25rem" },
+                mb: 0.5
+              }}
+            >
+              Session Notes
+            </Typography>
+            <Typography 
+              variant="body2" 
+              color="text.secondary"
+              sx={{ fontSize: "0.95rem" }}
+            >
               Track your campaign sessions with organized note sections
             </Typography>
           </Box>
@@ -701,17 +735,27 @@ export default function Sessions() {
         />
       </Box>
 
-      <TableContainer component={Paper} sx={{ backgroundColor: "background.paper", mb: 3 }}>
+      <TableContainer 
+        component={Paper} 
+        sx={{ 
+          backgroundColor: "background.paper",
+          background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+          border: "1px solid rgba(192, 163, 110, 0.1)",
+          borderRadius: 2,
+          overflow: "hidden",
+          mb: 3
+        }}
+      >
         <Table>
           <TableHead>
-            <TableRow>
-              <TableCell>Session #</TableCell>
-              <TableCell>Title</TableCell>
-              <TableCell>Date Played</TableCell>
-              <TableCell>Tags</TableCell>
-              <TableCell>Summary Preview</TableCell>
-              <TableCell>Created</TableCell>
-              <TableCell align="right">Actions</TableCell>
+            <TableRow sx={{ bgcolor: "rgba(192, 163, 110, 0.05)" }}>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Session #</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Title</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Date Played</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Tags</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Summary Preview</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Created</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -743,8 +787,10 @@ export default function Sessions() {
                   onClick={() => handleOpenDialog(session)}
                   sx={{ 
                     cursor: "pointer",
+                    transition: "all 0.2s ease",
                     "&:hover": {
-                      bgcolor: "action.hover"
+                      bgcolor: "rgba(192, 163, 110, 0.08)",
+                      transform: "scale(1.01)",
                     }
                   }}
                 >

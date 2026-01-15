@@ -322,12 +322,46 @@ export default function WorldInfo() {
         <CampaignNav campaignId={campaignId} />
       </Box>
 
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+      <Box sx={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "center", 
+        mb: 4,
+        pb: 3,
+        borderBottom: "1px solid rgba(192, 163, 110, 0.2)"
+      }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <MenuBookIcon sx={{ fontSize: 40, color: "primary.main" }} />
+          <Box
+            sx={{
+              p: 1.5,
+              borderRadius: 2,
+              background: "rgba(192, 163, 110, 0.1)",
+              border: "1px solid rgba(192, 163, 110, 0.2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <MenuBookIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: "primary.main" }} />
+          </Box>
           <Box>
-            <Typography variant="h4">World Information</Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography 
+              variant="h4"
+              sx={{
+                fontWeight: 700,
+                color: "primary.main",
+                letterSpacing: "0.5px",
+                fontSize: { xs: "1.75rem", sm: "2.25rem" },
+                mb: 0.5
+              }}
+            >
+              World Information
+            </Typography>
+            <Typography 
+              variant="body2" 
+              color="text.secondary"
+              sx={{ fontSize: "0.95rem" }}
+            >
               Store lore, history, magic systems, and other campaign world details
             </Typography>
           </Box>
@@ -350,17 +384,19 @@ export default function WorldInfo() {
         defaultExpanded 
         sx={{ 
           mb: 3, 
-          bgcolor: "background.paper", 
-          border: `1px solid`, 
-          borderColor: "primary.main",
+          bgcolor: "background.paper",
+          background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+          border: "1px solid rgba(192, 163, 110, 0.2)",
+          borderRadius: 2,
           "&:before": { display: "none" }
         }}
       >
         <AccordionSummary 
           expandIcon={<ExpandMoreIcon sx={{ color: "primary.main" }} />}
           sx={{
-            bgcolor: "action.hover",
-            "&:hover": { bgcolor: "action.selected" }
+            bgcolor: "rgba(192, 163, 110, 0.05)",
+            "&:hover": { bgcolor: "rgba(192, 163, 110, 0.1)" },
+            transition: "background-color 0.2s ease"
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center", width: "100%", mr: 1 }}>
@@ -391,16 +427,25 @@ export default function WorldInfo() {
         </AccordionDetails>
       </Accordion>
 
-      <TableContainer component={Paper} sx={{ backgroundColor: "background.paper" }}>
+      <TableContainer 
+        component={Paper} 
+        sx={{ 
+          backgroundColor: "background.paper",
+          background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+          border: "1px solid rgba(192, 163, 110, 0.1)",
+          borderRadius: 2,
+          overflow: "hidden"
+        }}
+      >
         <Table>
           <TableHead>
-            <TableRow>
-              <TableCell>Title</TableCell>
-              <TableCell>Category</TableCell>
-              <TableCell>Tags</TableCell>
-              <TableCell>Content</TableCell>
-              <TableCell>Created</TableCell>
-              <TableCell align="right">Actions</TableCell>
+            <TableRow sx={{ bgcolor: "rgba(192, 163, 110, 0.05)" }}>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Title</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Category</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Tags</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Content</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Created</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -431,8 +476,10 @@ export default function WorldInfo() {
                   onClick={() => handleOpenDialog(info)}
                   sx={{ 
                     cursor: "pointer",
+                    transition: "all 0.2s ease",
                     "&:hover": {
-                      bgcolor: "action.hover"
+                      bgcolor: "rgba(192, 163, 110, 0.08)",
+                      transform: "scale(1.01)",
                     }
                   }}
                 >

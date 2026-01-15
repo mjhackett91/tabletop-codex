@@ -391,16 +391,46 @@ export default function Locations() {
         flexDirection: { xs: "column", sm: "row" },
         justifyContent: "space-between", 
         alignItems: { xs: "flex-start", sm: "center" }, 
-        mb: { xs: 2, sm: 3 },
-        gap: { xs: 1, sm: 0 }
+        mb: { xs: 3, sm: 4 },
+        gap: { xs: 2, sm: 0 },
+        pb: 3,
+        borderBottom: "1px solid rgba(192, 163, 110, 0.2)"
       }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1.5, sm: 2 } }}>
-          <LocationOnIcon sx={{ fontSize: { xs: 32, sm: 40 }, color: "primary.main", flexShrink: 0 }} />
+          <Box
+            sx={{
+              p: 1.5,
+              borderRadius: 2,
+              background: "rgba(192, 163, 110, 0.1)",
+              border: "1px solid rgba(192, 163, 110, 0.2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <LocationOnIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: "primary.main" }} />
+          </Box>
           <Box>
-            <Typography variant="h4" sx={{ fontSize: { xs: "1.5rem", sm: "2rem" } }}>
+            <Typography 
+              variant="h4" 
+              sx={{ 
+                fontSize: { xs: "1.75rem", sm: "2.25rem" },
+                fontWeight: 700,
+                color: "primary.main",
+                letterSpacing: "0.5px",
+                mb: 0.5
+              }}
+            >
               Locations
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>
+            <Typography 
+              variant="body2" 
+              color="text.secondary" 
+              sx={{ 
+                display: { xs: "none", sm: "block" },
+                fontSize: "0.95rem"
+              }}
+            >
               Manage locations, cities, dungeons, and other places in your campaign
             </Typography>
           </Box>
@@ -423,17 +453,19 @@ export default function Locations() {
         defaultExpanded 
         sx={{ 
           mb: { xs: 2, sm: 3 }, 
-          bgcolor: "background.paper", 
-          border: `1px solid`, 
-          borderColor: "primary.main",
+          bgcolor: "background.paper",
+          background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+          border: "1px solid rgba(192, 163, 110, 0.2)",
+          borderRadius: 2,
           "&:before": { display: "none" }
         }}
       >
         <AccordionSummary 
           expandIcon={<ExpandMoreIcon sx={{ color: "primary.main" }} />}
           sx={{
-            bgcolor: "action.hover",
-            "&:hover": { bgcolor: "action.selected" }
+            bgcolor: "rgba(192, 163, 110, 0.05)",
+            "&:hover": { bgcolor: "rgba(192, 163, 110, 0.1)" },
+            transition: "background-color 0.2s ease"
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center", width: "100%", mr: 1 }}>
@@ -468,6 +500,10 @@ export default function Locations() {
         component={Paper} 
         sx={{ 
           backgroundColor: "background.paper",
+          background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+          border: "1px solid rgba(192, 163, 110, 0.1)",
+          borderRadius: 2,
+          overflow: "hidden",
           maxHeight: { xs: "calc(100vh - 300px)", sm: "calc(100vh - 350px)" },
           overflowX: "auto",
           overflowY: "auto"
@@ -475,9 +511,19 @@ export default function Locations() {
       >
         <Table stickyHeader>
           <TableHead>
-            <TableRow>
+            <TableRow sx={{ bgcolor: "rgba(192, 163, 110, 0.05)" }}>
               <TableCell 
-                sx={{ minWidth: { xs: 150, sm: 180 }, cursor: "pointer", userSelect: "none" }}
+                sx={{ 
+                  minWidth: { xs: 150, sm: 180 }, 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600,
+                  color: "primary.main",
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
                 onClick={() => handleSort("name")}
               >
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -488,7 +534,18 @@ export default function Locations() {
                 </Box>
               </TableCell>
               <TableCell 
-                sx={{ minWidth: 100, display: { xs: "none", md: "table-cell" }, cursor: "pointer", userSelect: "none" }}
+                sx={{ 
+                  minWidth: 100, 
+                  display: { xs: "none", md: "table-cell" }, 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600,
+                  color: "primary.main",
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
                 onClick={() => handleSort("type")}
               >
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -498,11 +555,22 @@ export default function Locations() {
                   )}
                 </Box>
               </TableCell>
-              <TableCell sx={{ minWidth: 120, display: { xs: "none", lg: "table-cell" } }}>Tags</TableCell>
-              <TableCell sx={{ minWidth: 150, display: { xs: "none", lg: "table-cell" } }}>Parent Location</TableCell>
-              <TableCell sx={{ minWidth: 200, display: { xs: "none", sm: "table-cell" } }}>Description</TableCell>
+              <TableCell sx={{ minWidth: 120, display: { xs: "none", lg: "table-cell" }, fontWeight: 600, color: "primary.main", py: 2 }}>Tags</TableCell>
+              <TableCell sx={{ minWidth: 150, display: { xs: "none", lg: "table-cell" }, fontWeight: 600, color: "primary.main", py: 2 }}>Parent Location</TableCell>
+              <TableCell sx={{ minWidth: 200, display: { xs: "none", sm: "table-cell" }, fontWeight: 600, color: "primary.main", py: 2 }}>Description</TableCell>
               <TableCell 
-                sx={{ minWidth: 100, display: { xs: "none", md: "table-cell" }, cursor: "pointer", userSelect: "none" }}
+                sx={{ 
+                  minWidth: 100, 
+                  display: { xs: "none", md: "table-cell" }, 
+                  cursor: "pointer", 
+                  userSelect: "none",
+                  fontWeight: 600,
+                  color: "primary.main",
+                  py: 2,
+                  "&:hover": {
+                    bgcolor: "rgba(192, 163, 110, 0.1)",
+                  }
+                }}
                 onClick={() => handleSort("created")}
               >
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -512,7 +580,7 @@ export default function Locations() {
                   )}
                 </Box>
               </TableCell>
-              <TableCell align="right" sx={{ minWidth: 100 }}>Actions</TableCell>
+              <TableCell align="right" sx={{ minWidth: 100, fontWeight: 600, color: "primary.main", py: 2 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -544,8 +612,10 @@ export default function Locations() {
                   onClick={() => handleOpenDialog(location)}
                   sx={{ 
                     cursor: "pointer",
+                    transition: "all 0.2s ease",
                     "&:hover": {
-                      bgcolor: "action.hover"
+                      bgcolor: "rgba(192, 163, 110, 0.08)",
+                      transform: "scale(1.01)",
                     }
                   }}
                 >

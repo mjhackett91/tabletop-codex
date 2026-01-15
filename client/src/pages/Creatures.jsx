@@ -42,6 +42,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import InfoIcon from "@mui/icons-material/Info";
 import PetsIcon from "@mui/icons-material/Pets";
 import apiClient from "../services/apiClient";
 import RichTextEditor from "../components/RichTextEditor";
@@ -465,14 +466,36 @@ useEffect(() => {
         <CampaignNav campaignId={campaignId} />
       </Box>
 
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-        <Typography variant="h4" color="primary.main">
+      <Box sx={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "center", 
+        mb: 4,
+        pb: 3,
+        borderBottom: "1px solid rgba(192, 163, 110, 0.2)"
+      }}>
+        <Typography 
+          variant="h4" 
+          color="primary.main"
+          sx={{
+            fontWeight: 700,
+            letterSpacing: "0.5px",
+            fontSize: { xs: "1.75rem", sm: "2.25rem" }
+          }}
+        >
           Creatures
         </Typography>
         <Chip 
           label={`${creatures.length} creature${creatures.length !== 1 ? "s" : ""}`} 
           color="primary"
           variant="outlined"
+          sx={{
+            fontSize: "0.875rem",
+            height: 32,
+            px: 1.5,
+            borderWidth: 1.5,
+            fontWeight: 600
+          }}
         />
       </Box>
 
@@ -517,20 +540,78 @@ useEffect(() => {
         </FormControl>
       </Box>
 
+      <Accordion 
+        defaultExpanded 
+        sx={{ 
+          mb: { xs: 2, sm: 3 }, 
+          bgcolor: "background.paper",
+          background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+          border: "1px solid rgba(192, 163, 110, 0.2)",
+          borderRadius: 2,
+          "&:before": { display: "none" }
+        }}
+      >
+        <AccordionSummary 
+          expandIcon={<ExpandMoreIcon sx={{ color: "primary.main" }} />}
+          sx={{
+            bgcolor: "rgba(192, 163, 110, 0.05)",
+            "&:hover": { bgcolor: "rgba(192, 163, 110, 0.1)" },
+            transition: "background-color 0.2s ease"
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", width: "100%", mr: 1 }}>
+            <InfoIcon sx={{ mr: 1, color: "primary.main" }} />
+            <Typography variant="h6" color="primary.main">
+              Creating Creatures: What to Include
+            </Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Box component="ul" sx={{ m: 0, pl: 3 }}>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Include full D&D 5e-style statblock: AC, HP, speed, ability scores
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Add creature type, size, and challenge rating (CR)
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              List skills, saving throws, damage resistances/immunities, and condition immunities
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Describe special abilities, actions, legendary actions, and lair actions
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Note senses, languages, and any special traits or behaviors
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Include environment, typical behavior, and role in your campaign
+            </Typography>
+          </Box>
+        </AccordionDetails>
+      </Accordion>
+
       {/* Creatures Table */}
-      <TableContainer component={Paper}>
+      <TableContainer 
+        component={Paper}
+        sx={{
+          background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+          border: "1px solid rgba(192, 163, 110, 0.1)",
+          borderRadius: 2,
+          overflow: "hidden"
+        }}
+      >
         <Table>
           <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>CR</TableCell>
-              <TableCell>AC</TableCell>
-              <TableCell>HP</TableCell>
-              <TableCell>Tags</TableCell>
-              <TableCell>Visibility</TableCell>
-              <TableCell>Created</TableCell>
-              <TableCell align="right">Actions</TableCell>
+            <TableRow sx={{ bgcolor: "rgba(192, 163, 110, 0.05)" }}>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Name</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Type</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>CR</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>AC</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>HP</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Tags</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Visibility</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Created</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -550,8 +631,10 @@ useEffect(() => {
                   onClick={() => handleOpenDialog(creature)}
                   sx={{ 
                     cursor: "pointer",
+                    transition: "all 0.2s ease",
                     "&:hover": {
-                      bgcolor: "action.hover"
+                      bgcolor: "rgba(192, 163, 110, 0.08)",
+                      transform: "scale(1.01)",
                     }
                   }}
                 >

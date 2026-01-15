@@ -43,6 +43,14 @@ import CampaignIcon from "@mui/icons-material/Campaign";
 import ShareIcon from "@mui/icons-material/Share";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import PersonRemoveIcon from "@mui/icons-material/PersonRemove";
+import PersonIcon from "@mui/icons-material/Person";
+import EventIcon from "@mui/icons-material/Event";
+import AssignmentIcon from "@mui/icons-material/Assignment";
+import LocationOnIcon from "@mui/icons-material/LocationOn";
+import GroupIcon from "@mui/icons-material/Group";
+import MenuBookIcon from "@mui/icons-material/MenuBook";
+import PetsIcon from "@mui/icons-material/Pets";
+import AddCircleIcon from "@mui/icons-material/AddCircle";
 import apiClient from "../services/apiClient";
 
 export default function Dashboard() {
@@ -60,6 +68,14 @@ export default function Dashboard() {
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("player");
+  
+  // Statistics state
+  const [statistics, setStatistics] = useState({});
+  const [loadingStatistics, setLoadingStatistics] = useState({});
+  
+  // Activity feed state
+  const [activity, setActivity] = useState({});
+  const [loadingActivity, setLoadingActivity] = useState({});
 
   // Fetch campaigns
   const fetchCampaigns = async () => {
@@ -72,6 +88,13 @@ export default function Dashboard() {
 
       const data = await apiClient.get("/campaigns");
       setCampaigns(data);
+      
+      // Fetch statistics for each campaign
+      // Activity feed temporarily disabled - will revisit later
+      if (data && data.length > 0) {
+        fetchAllStatistics(data);
+        // fetchAllActivity(data);
+      }
     } catch (error) {
       console.error("Error fetching campaigns:", error);
       if (error.message?.includes("401") || error.message?.includes("403")) {
@@ -86,6 +109,97 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Fetch statistics for all campaigns
+  const fetchAllStatistics = async (campaignsList) => {
+    const statsPromises = campaignsList.map(async (campaign) => {
+      try {
+        setLoadingStatistics((prev) => ({ ...prev, [campaign.id]: true }));
+        const stats = await apiClient.get(`/campaigns/${campaign.id}/statistics`);
+        setStatistics((prev) => ({ ...prev, [campaign.id]: stats }));
+        return { campaignId: campaign.id, stats };
+      } catch (error) {
+        console.error(`Error fetching statistics for campaign ${campaign.id}:`, error);
+        // Set default stats on error
+        setStatistics((prev) => ({
+          ...prev,
+          [campaign.id]: { characters: 0, sessions: 0, quests: 0 },
+        }));
+        return { campaignId: campaign.id, stats: { characters: 0, sessions: 0, quests: 0 } };
+      } finally {
+        setLoadingStatistics((prev) => ({ ...prev, [campaign.id]: false }));
+      }
+    });
+
+    await Promise.all(statsPromises);
+  };
+
+  // Fetch activity feed for all campaigns
+  const fetchAllActivity = async (campaignsList) => {
+    const activityPromises = campaignsList.map(async (campaign) => {
+      try {
+        setLoadingActivity((prev) => ({ ...prev, [campaign.id]: true }));
+        const activities = await apiClient.get(`/campaigns/${campaign.id}/activity`);
+        setActivity((prev) => ({ ...prev, [campaign.id]: activities }));
+        return { campaignId: campaign.id, activities };
+      } catch (error) {
+        console.error(`Error fetching activity for campaign ${campaign.id}:`, error);
+        // Set empty activity on error
+        setActivity((prev) => ({ ...prev, [campaign.id]: [] }));
+        return { campaignId: campaign.id, activities: [] };
+      } finally {
+        setLoadingActivity((prev) => ({ ...prev, [campaign.id]: false }));
+      }
+    });
+
+    await Promise.all(activityPromises);
+  };
+
+  // Get icon for entity type
+  const getEntityIcon = (entityType) => {
+    switch (entityType) {
+      case 'character':
+        return <PersonIcon fontSize="small" />;
+      case 'session':
+        return <EventIcon fontSize="small" />;
+      case 'quest':
+        return <AssignmentIcon fontSize="small" />;
+      case 'location':
+        return <LocationOnIcon fontSize="small" />;
+      case 'faction':
+        return <GroupIcon fontSize="small" />;
+      case 'world_info':
+        return <MenuBookIcon fontSize="small" />;
+      case 'creature':
+        return <PetsIcon fontSize="small" />;
+      default:
+        return <PersonIcon fontSize="small" />;
+    }
+  };
+
+  // Get action icon
+  const getActionIcon = (actionType) => {
+    return actionType === 'created' 
+      ? <AddCircleIcon fontSize="small" sx={{ color: "success.main" }} />
+      : <EditIcon fontSize="small" sx={{ color: "primary.main" }} />;
+  };
+
+  // Format time ago
+  const formatTimeAgo = (timestamp) => {
+    if (!timestamp) return "Unknown";
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
   };
 
   useEffect(() => {
@@ -296,16 +410,46 @@ export default function Dashboard() {
         flexDirection: { xs: "column", sm: "row" },
         justifyContent: "space-between", 
         alignItems: { xs: "flex-start", sm: "center" }, 
-        mb: { xs: 2, sm: 3 },
-        gap: { xs: 2, sm: 0 }
+        mb: { xs: 3, sm: 4 },
+        gap: { xs: 2, sm: 0 },
+        pb: 3,
+        borderBottom: "1px solid rgba(192, 163, 110, 0.2)"
       }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1.5, sm: 2 }, flex: 1 }}>
-          <CampaignIcon sx={{ fontSize: { xs: 32, sm: 40 }, color: "primary.main", flexShrink: 0 }} />
+          <Box
+            sx={{
+              p: 1.5,
+              borderRadius: 2,
+              background: "rgba(192, 163, 110, 0.1)",
+              border: "1px solid rgba(192, 163, 110, 0.2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <CampaignIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: "primary.main" }} />
+          </Box>
           <Box>
-            <Typography variant="h4" sx={{ fontSize: { xs: "1.5rem", sm: "2rem" } }}>
+            <Typography 
+              variant="h4" 
+              sx={{ 
+                fontSize: { xs: "1.75rem", sm: "2.25rem" },
+                fontWeight: 700,
+                color: "primary.main",
+                letterSpacing: "0.5px",
+                mb: 0.5
+              }}
+            >
               My Campaigns
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>
+            <Typography 
+              variant="body2" 
+              color="text.secondary" 
+              sx={{ 
+                display: { xs: "none", sm: "block" },
+                fontSize: "0.95rem"
+              }}
+            >
               Manage your tabletop RPG campaigns
             </Typography>
           </Box>
@@ -314,25 +458,80 @@ export default function Dashboard() {
           label={`${campaigns.length} campaign${campaigns.length !== 1 ? "s" : ""}`}
           color="primary"
           variant="outlined"
-          sx={{ flexShrink: 0 }}
+          sx={{ 
+            flexShrink: 0,
+            fontSize: "0.875rem",
+            height: 32,
+            px: 1.5,
+            borderWidth: 1.5,
+            fontWeight: 600
+          }}
         />
       </Box>
 
       {campaigns.length === 0 ? (
-        <Card sx={{ p: { xs: 3, sm: 4 }, textAlign: "center" }}>
+        <Card 
+          sx={{ 
+            p: { xs: 4, sm: 6 }, 
+            textAlign: "center",
+            background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+            border: "1px solid rgba(192, 163, 110, 0.2)",
+          }}
+        >
           <CardContent>
-            <CampaignIcon sx={{ fontSize: { xs: 48, sm: 64 }, color: "text.secondary", mb: 2 }} />
-            <Typography variant="h6" color="text.secondary" gutterBottom>
+            <Box
+              sx={{
+                display: "inline-flex",
+                p: 3,
+                borderRadius: "50%",
+                background: "rgba(192, 163, 110, 0.1)",
+                border: "2px solid rgba(192, 163, 110, 0.2)",
+                mb: 3,
+              }}
+            >
+              <CampaignIcon sx={{ fontSize: { xs: 56, sm: 72 }, color: "primary.main" }} />
+            </Box>
+            <Typography 
+              variant="h5" 
+              color="text.primary" 
+              gutterBottom
+              sx={{ 
+                fontWeight: 600,
+                mb: 1.5
+              }}
+            >
               No campaigns yet
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3, maxWidth: "600px", mx: "auto" }}>
+            <Typography 
+              variant="body1" 
+              color="text.secondary" 
+              sx={{ 
+                mb: 4, 
+                maxWidth: "500px", 
+                mx: "auto",
+                lineHeight: 1.7
+              }}
+            >
               Create your first campaign to start organizing your tabletop RPG adventures!
             </Typography>
             <Button
               variant="contained"
               startIcon={<AddIcon />}
               onClick={() => handleOpenDialog()}
-              size="medium"
+              size="large"
+              sx={{
+                px: 4,
+                py: 1.5,
+                fontWeight: 600,
+                textTransform: "none",
+                borderRadius: 2,
+                boxShadow: "0 4px 12px rgba(192, 163, 110, 0.3)",
+                "&:hover": {
+                  boxShadow: "0 6px 16px rgba(192, 163, 110, 0.4)",
+                  transform: "translateY(-2px)",
+                },
+                transition: "all 0.2s ease",
+              }}
             >
               Create Campaign
             </Button>
@@ -347,30 +546,209 @@ export default function Dashboard() {
                   height: "100%",
                   display: "flex",
                   flexDirection: "column",
+                  background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+                  border: "1px solid rgba(192, 163, 110, 0.1)",
+                  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                   "&:hover": {
-                    boxShadow: 4,
+                    boxShadow: "0 8px 24px rgba(192, 163, 110, 0.15), 0 4px 8px rgba(0, 0, 0, 0.3)",
+                    transform: "translateY(-4px)",
+                    borderColor: "rgba(192, 163, 110, 0.3)",
                   },
                 }}
               >
-                <CardContent sx={{ flexGrow: 1 }}>
-                  <Typography variant="h6" gutterBottom fontWeight="medium">
+                <CardContent sx={{ flexGrow: 1, p: 3 }}>
+                  <Typography 
+                    variant="h5" 
+                    gutterBottom 
+                    fontWeight={600}
+                    sx={{
+                      mb: 1.5,
+                      color: "primary.main",
+                      letterSpacing: "0.5px",
+                    }}
+                  >
                     {campaign.name}
                   </Typography>
                   <Typography
                     variant="body2"
                     color="text.secondary"
                     sx={{
-                      mb: 2,
+                      mb: 3,
+                      minHeight: 60,
                       display: "-webkit-box",
                       WebkitLineClamp: 3,
                       WebkitBoxOrient: "vertical",
                       overflow: "hidden",
+                      lineHeight: 1.6,
                     }}
                   >
                     {campaign.description || "No description"}
                   </Typography>
-                  <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mt: 1 }}>
-                    <Typography variant="caption" color="text.secondary">
+                  
+                  {/* Statistics Cards */}
+                  {loadingStatistics[campaign.id] ? (
+                    <Box sx={{ display: "flex", gap: 1, mb: 3, justifyContent: "space-around" }}>
+                      <Typography variant="caption" color="text.secondary">Loading...</Typography>
+                    </Box>
+                  ) : (
+                    <Box 
+                      sx={{ 
+                        display: "flex", 
+                        gap: 2, 
+                        mb: 3, 
+                        justifyContent: "space-around", 
+                        flexWrap: "wrap",
+                        px: 1
+                      }}
+                    >
+                      <Box 
+                        sx={{ 
+                          display: "flex", 
+                          flexDirection: "column", 
+                          alignItems: "center", 
+                          minWidth: 70,
+                          p: 1.5,
+                          borderRadius: 2,
+                          background: "rgba(192, 163, 110, 0.08)",
+                          border: "1px solid rgba(192, 163, 110, 0.15)",
+                          transition: "all 0.2s ease",
+                          "&:hover": {
+                            background: "rgba(192, 163, 110, 0.12)",
+                            transform: "scale(1.05)",
+                          }
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            p: 1,
+                            borderRadius: "50%",
+                            background: "rgba(192, 163, 110, 0.2)",
+                            mb: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <PersonIcon sx={{ fontSize: 24, color: "primary.main" }} />
+                        </Box>
+                        <Typography variant="h5" color="primary.main" fontWeight={700} sx={{ mb: 0.5 }}>
+                          {statistics[campaign.id]?.characters || 0}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem", textAlign: "center" }}>
+                          Character{statistics[campaign.id]?.characters !== 1 ? "s" : ""}
+                        </Typography>
+                      </Box>
+                      <Box 
+                        sx={{ 
+                          display: "flex", 
+                          flexDirection: "column", 
+                          alignItems: "center", 
+                          minWidth: 70,
+                          p: 1.5,
+                          borderRadius: 2,
+                          background: "rgba(107, 91, 149, 0.08)",
+                          border: "1px solid rgba(107, 91, 149, 0.15)",
+                          transition: "all 0.2s ease",
+                          "&:hover": {
+                            background: "rgba(107, 91, 149, 0.12)",
+                            transform: "scale(1.05)",
+                          }
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            p: 1,
+                            borderRadius: "50%",
+                            background: "rgba(107, 91, 149, 0.2)",
+                            mb: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <EventIcon sx={{ fontSize: 24, color: "secondary.main" }} />
+                        </Box>
+                        <Typography variant="h5" color="secondary.main" fontWeight={700} sx={{ mb: 0.5 }}>
+                          {statistics[campaign.id]?.sessions || 0}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem", textAlign: "center" }}>
+                          Session{statistics[campaign.id]?.sessions !== 1 ? "s" : ""}
+                        </Typography>
+                      </Box>
+                      <Box 
+                        sx={{ 
+                          display: "flex", 
+                          flexDirection: "column", 
+                          alignItems: "center", 
+                          minWidth: 70,
+                          p: 1.5,
+                          borderRadius: 2,
+                          background: "rgba(76, 175, 80, 0.08)",
+                          border: "1px solid rgba(76, 175, 80, 0.15)",
+                          transition: "all 0.2s ease",
+                          "&:hover": {
+                            background: "rgba(76, 175, 80, 0.12)",
+                            transform: "scale(1.05)",
+                          }
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            p: 1,
+                            borderRadius: "50%",
+                            background: "rgba(76, 175, 80, 0.2)",
+                            mb: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <AssignmentIcon sx={{ fontSize: 24, color: "success.main" }} />
+                        </Box>
+                        <Typography variant="h5" color="success.main" fontWeight={700} sx={{ mb: 0.5 }}>
+                          {statistics[campaign.id]?.quests || 0}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem", textAlign: "center" }}>
+                          Quest{statistics[campaign.id]?.quests !== 1 ? "s" : ""}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
+                  
+                  
+                    {/* Recent Activity Feed - Temporarily disabled */}
+                    {/* {loadingActivity[campaign.id] ? (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="caption" color="text.secondary">Loading activity...</Typography>
+                      </Box>
+                    ) : activity[campaign.id] && activity[campaign.id].length > 0 ? (
+                      <Box sx={{ mb: 2, mt: 1 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: "block", fontWeight: "medium" }}>
+                          Recent Activity
+                        </Typography>
+                        <List dense sx={{ py: 0, maxHeight: 150, overflowY: "auto" }}>
+                          {activity[campaign.id].slice(0, 5).map((item, idx) => (
+                            <ListItem key={idx} sx={{ px: 0, py: 0.5 }}>
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
+                                {getEntityIcon(item.entity_type)}
+                                {getActionIcon(item.action_type)}
+                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                  <Typography variant="caption" sx={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    <strong>{item.entity_name}</strong> {item.action_type}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.65rem" }}>
+                                    {item.username || "Unknown"} • {formatTimeAgo(item.activity_time)}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            </ListItem>
+                          ))}
+                        </List>
+                      </Box>
+                    ) : null} */}
+                  
+                  <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", mt: 2, pt: 2, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
                       Created: {formatDate(campaign.created_at)}
                     </Typography>
                     {campaign.user_role && (
@@ -379,6 +757,12 @@ export default function Dashboard() {
                         size="small" 
                         color={campaign.user_role === "dm" ? "primary" : "secondary"}
                         variant="outlined"
+                        sx={{ 
+                          fontSize: "0.7rem",
+                          height: 24,
+                          borderWidth: 1.5,
+                          fontWeight: 500
+                        }}
                       />
                     )}
                     {campaign.is_owner && (
@@ -387,17 +771,35 @@ export default function Dashboard() {
                         size="small" 
                         color="primary"
                         variant="filled"
+                        sx={{ 
+                          fontSize: "0.7rem",
+                          height: 24,
+                          fontWeight: 500
+                        }}
                       />
                     )}
                   </Box>
                 </CardContent>
-                <CardActions sx={{ justifyContent: "space-between", px: 2, pb: 2 }}>
+                <CardActions sx={{ justifyContent: "space-between", px: 3, pb: 3, pt: 0 }}>
                   <Button
                     component={Link}
                     to={`/campaigns/${campaign.id}/characters`}
-                    size="small"
+                    size="medium"
                     variant="contained"
                     color="primary"
+                    sx={{
+                      px: 3,
+                      py: 1,
+                      fontWeight: 600,
+                      textTransform: "none",
+                      borderRadius: 2,
+                      boxShadow: "0 2px 8px rgba(192, 163, 110, 0.3)",
+                      "&:hover": {
+                        boxShadow: "0 4px 12px rgba(192, 163, 110, 0.4)",
+                        transform: "translateY(-1px)",
+                      },
+                      transition: "all 0.2s ease",
+                    }}
                   >
                     Open
                   </Button>

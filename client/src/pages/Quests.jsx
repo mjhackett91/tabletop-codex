@@ -631,12 +631,46 @@ export default function Quests() {
         <CampaignNav campaignId={campaignId} />
       </Box>
 
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+      <Box sx={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "center", 
+        mb: 4,
+        pb: 3,
+        borderBottom: "1px solid rgba(192, 163, 110, 0.2)"
+      }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <AssignmentIcon sx={{ fontSize: 40, color: "primary.main" }} />
+          <Box
+            sx={{
+              p: 1.5,
+              borderRadius: 2,
+              background: "rgba(192, 163, 110, 0.1)",
+              border: "1px solid rgba(192, 163, 110, 0.2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <AssignmentIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: "primary.main" }} />
+          </Box>
           <Box>
-            <Typography variant="h4">Quests</Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography 
+              variant="h4"
+              sx={{
+                fontWeight: 700,
+                color: "primary.main",
+                letterSpacing: "0.5px",
+                fontSize: { xs: "1.75rem", sm: "2.25rem" },
+                mb: 0.5
+              }}
+            >
+              Quests
+            </Typography>
+            <Typography 
+              variant="body2" 
+              color="text.secondary"
+              sx={{ fontSize: "0.95rem" }}
+            >
               Track campaign quests, missions, and objectives with comprehensive details
             </Typography>
           </Box>
@@ -655,17 +689,26 @@ export default function Quests() {
         />
       </Box>
 
-      <TableContainer component={Paper} sx={{ backgroundColor: "background.paper" }}>
+      <TableContainer 
+        component={Paper} 
+        sx={{ 
+          backgroundColor: "background.paper",
+          background: "linear-gradient(135deg, rgba(26, 26, 26, 0.9) 0%, rgba(30, 30, 30, 0.95) 100%)",
+          border: "1px solid rgba(192, 163, 110, 0.1)",
+          borderRadius: 2,
+          overflow: "hidden"
+        }}
+      >
         <Table>
           <TableHead>
-            <TableRow>
-              <TableCell>Title</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Tags</TableCell>
-              <TableCell>Summary</TableCell>
-              <TableCell>Urgency</TableCell>
-              <TableCell align="right">Actions</TableCell>
+            <TableRow sx={{ bgcolor: "rgba(192, 163, 110, 0.05)" }}>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Title</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Type</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Tags</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Summary</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Urgency</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600, color: "primary.main", py: 2 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -697,6 +740,11 @@ export default function Quests() {
                   onClick={() => handleOpenDialog(quest)}
                   sx={{ 
                     cursor: "pointer",
+                    transition: "all 0.2s ease",
+                    "&:hover": {
+                      bgcolor: "rgba(192, 163, 110, 0.08)",
+                      transform: "scale(1.01)",
+                    },
                     "&:hover": {
                       bgcolor: "action.hover"
                     }
